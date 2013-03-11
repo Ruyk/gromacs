@@ -57,6 +57,10 @@
 #include "tmpi.h"
 #endif
 
+#ifdef  GMX_OPENSHMEM
+#include "openshmem.h"
+#endif
+
 #include "mpelogging.h"
 
 /* The source code in this file should be thread-safe.
@@ -233,6 +237,11 @@ int gmx_setup(int *argc, char **argv, int *nnodes)
 #endif
 
     *nnodes = mpi_num_nodes;
+
+
+#ifdef GMX_OPENSHMEM
+    (void) start_pes(*nnodes);
+#endif
 
     return mpi_my_rank;
 #endif
