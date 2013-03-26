@@ -44,7 +44,10 @@ if(GMX_MPI)
   # Test the CMAKE_C_COMPILER for being an MPI (wrapper) compiler
   TRY_COMPILE(MPI_FOUND ${CMAKE_BINARY_DIR}
     "${CMAKE_SOURCE_DIR}/cmake/TestMPI.c"
-    COMPILE_DEFINITIONS )
+    COMPILE_DEFINITIONS
+    OUTPUT_VARIABLE output )
+
+  message(ERROR " ${output} ")
 
   # If CMAKE_C_COMPILER is not a MPI wrapper. Try to find MPI using cmake module as fall-back.
   # cmake < 2.8.5 not recommended for fall-back because of unreliability (redmine #851)

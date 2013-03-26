@@ -57,8 +57,8 @@
 #include "tmpi.h"
 #endif
 
-#ifdef  GMX_OPENSHMEM
-#include "openshmem.h"
+#ifdef  GMX_SHMEM
+#include "shmem.h"
 #endif
 
 #include "mpelogging.h"
@@ -238,9 +238,10 @@ int gmx_setup(int *argc, char **argv, int *nnodes)
 
     *nnodes = mpi_num_nodes;
 
-
-#ifdef GMX_OPENSHMEM
-    (void) start_pes(*nnodes);
+#ifdef GMX_SHMEM
+#warning "SHMEM support is highly experimental"
+    (void) start_pes(0);
+     shmem_barrier_all();
 #endif
 
     return mpi_my_rank;
@@ -957,10 +958,26 @@ void gmx_finalize_par(void)
         fprintf(debug, "Will call MPI_Finalize now\n");
     }
 
+
+#ifdef _CRAY && GMX_SHMEM
+    /* Cray implementation requires a call to shmem_finalize before
+     *  its MPI counterpart. This is not part of the OpenSHMEM standard
+     */
+    shmem_finalize();
+#endif
+
+
+#if !GMX_SHMEM || (GMX_SHMEM && _CRAY)
     ret = MPI_Finalize();
     if (debug)
     {
         fprintf(debug, "Return code from MPI_Finalize = %d\n", ret);
     }
+#else
+    /* When using OpenSHMEM, do not MPI_Finalize,
+     * GASNet mpi conduit does it automatically
+     */
+#endif
+
 #endif
 }

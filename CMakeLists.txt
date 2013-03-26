@@ -163,6 +163,7 @@ option(GMX_SOFTWARE_INVSQRT "Use GROMACS software 1/sqrt" ON)
 mark_as_advanced(GMX_SOFTWARE_INVSQRT)
 option(GMX_FAHCORE "Build a library with mdrun functionality" OFF)
 mark_as_advanced(GMX_FAHCORE)
+option(GMX_SHMEM    "Build with SHMEM support (requires MPI)" OFF)
 
 include(gmxDetectAcceleration)
 if(NOT DEFINED GMX_CPU_ACCELERATION)
@@ -308,9 +309,15 @@ if (GMX_DEFAULT_SUFFIX)
   set(GMX_BINARY_SUFFIX "")
   set(GMX_LIBS_SUFFIX "")
   if (GMX_MPI)
-    set(GMX_BINARY_SUFFIX "_mpi")
-    set(GMX_LIBS_SUFFIX "_mpi")
+    if (GMX_SHMEM)
+      set(GMX_BINARY_SUFFIX "_shmem")
+      set(GMX_LIBS_SUFFIX "_shmem")
+    else()
+      set(GMX_BINARY_SUFFIX "_mpi")
+      set(GMX_LIBS_SUFFIX "_mpi")
+    endif(GMX_SHMEM)
   endif(GMX_MPI)
+
   if (GMX_DOUBLE)
     set (GMX_BINARY_SUFFIX "${GMX_BINARY_SUFFIX}_d")
     set (GMX_LIBS_SUFFIX "${GMX_LIBS_SUFFIX}_d")
@@ -483,6 +490,8 @@ option(BUILD_SHARED_LIBS "Enable shared libraries (can be problematic e.g. with 
 #Process MPI settings
 ########################################################################
 include(gmxManageMPI)
+# Process SHMEM settings. They require MPI support.
+include(gmxManageSHMEM)
 
 ########################################################################
 # Find external packages                                               #
