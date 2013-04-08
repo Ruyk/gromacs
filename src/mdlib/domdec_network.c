@@ -41,6 +41,11 @@
 #include <string.h>
 #include "domdec_network.h"
 
+#ifdef GMX_SHMEM
+#include <shmem.h>
+#define SHDEBUG(...) { printf("SHMEM(ID:%d,RANK:%d) (domdec_network.c,%d)", _my_pe(), dd->rank, __LINE__); printf(__VA_ARGS__); }
+#endif
+
 #ifdef GMX_LIB_MPI
 #include <mpi.h>
 #endif
@@ -57,7 +62,67 @@ void dd_sendrecv_int(const gmx_domdec_t *dd,
                      int *buf_s, int n_s,
                      int *buf_r, int n_r)
 {
-#ifdef GMX_MPI
+#ifdef GMX_SHMEM
+#warning " Replacing SendRecv int"
+    int        rank_s, rank_r;
+    MPI_Status stat;
+    int * sh_buf_s;
+    int * sh_buf_r;
+    int i;
+    const static MAX_BUFF = 1000;
+
+    sh_buf_s = (int *) shmalloc(MAX_BUFF * sizeof(int));
+    sh_buf_r = (int *) shmalloc(MAX_BUFF * sizeof(int));
+
+    rank_s = dd->neighbor[ddimind][direction == dddirForward ? 0 : 1];
+    rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
+
+    SHDEBUG(" SendRecv using SHMEM (n_s %d, n_r %d) \n", n_s, n_r);
+
+   //  if (n_s && n_r)
+    {
+       /* MPI_Sendrecv(buf_s, n_s*sizeof(int), MPI_BYTE, rank_s, 0,
+                     buf_r, n_r*sizeof(int), MPI_BYTE, rank_r, 0,
+                     dd->mpi_comm_all, &stat);*/
+
+        SHDEBUG("sh_buf_r accessible %d \n", shmem_addr_accessible(sh_buf_r, rank_s));
+        SHDEBUG("sh_buf_s accessible %d \n", shmem_addr_accessible(sh_buf_s, rank_s));
+        if (n_s) {
+          memcpy(sh_buf_s, buf_s, n_s * sizeof(int));
+          // Put buf_is in rank_s
+          //               T       S     Len   Pe
+          shmem_int_put(sh_buf_r, sh_buf_s, n_s, rank_s);
+        }
+
+        SHDEBUG(" After the shmem_int_put (%d => %d) \n", _my_pe(), rank_s);
+        shmem_barrier_all();
+        SHDEBUG(" After barrier \n");
+        if (n_r) {
+            memcpy(buf_r, sh_buf_r, n_r * sizeof(int));
+        }
+        SHDEBUG(" After memcpy \n");
+
+
+    }
+    shmem_barrier_all();
+    SHDEBUG(" Before free \n");
+    if (sh_buf_s) shfree(sh_buf_s);
+    if (sh_buf_r) shfree(sh_buf_r);
+
+    SHDEBUG(" After free \n");
+   /* else if (n_s)
+    {
+        MPI_Send(    buf_s, n_s*sizeof(int), MPI_BYTE, rank_s, 0,
+                     dd->mpi_comm_all);
+    }
+    else if (n_r)
+    {
+        MPI_Recv(    buf_r, n_r*sizeof(int), MPI_BYTE, rank_r, 0,
+                     dd->mpi_comm_all, &stat);
+    }*/
+
+
+#elif defined(GMX_MPI)
     int        rank_s, rank_r;
     MPI_Status stat;
 
