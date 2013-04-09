@@ -235,6 +235,10 @@ typedef struct {
     int   pme_recv_f_alloc;
     rvec *pme_recv_f_buf;
 
+#ifdef SHMEM_TEMPORARY_BUFFER
+    void *shmem_tmp_buf;
+#endif
+
 } gmx_domdec_t;
 
 typedef struct gmx_partdec *gmx_partdec_p_t;

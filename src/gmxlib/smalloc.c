@@ -56,6 +56,10 @@
 #include "dmalloc.h"
 #endif
 
+#ifdef GMX_SHMEM
+#include "shmem.h"
+#endif
+
 #ifdef DEBUG
 static void log_action(int bMal, const char *what, const char *file, int line,
                        int nelem, int size, void *ptr)
@@ -416,3 +420,51 @@ void save_free_aligned(const char *name, const char *file, int line, void *ptr)
 #endif
     }
 }
+
+
+#ifdef GMX_SHMEM
+/******  SHMEM memory handling
+*/
+void *save_shmalloc(const char *name, const char *file, int line, size_t size)
+{
+    void *p;
+
+    p = NULL;
+    if (size == 0)
+    {
+        p = NULL;
+    }
+    else
+    {
+        if ((p = shmalloc(size)) == NULL)
+        {
+            char cbuf[22];
+            gmx_fatal(errno, __FILE__, __LINE__,
+                      "Not enough memory. Failed to malloc %s bytes for %s\n"
+                      "(called from file %s, line %d)",
+                      gmx_large_int_str((gmx_large_int_t)size, cbuf),
+                      name, file, line);
+        }
+        (void) memset(p, 0, size);
+    }
+#ifdef DEBUG
+    log_action(1, name, file, line, 1, size, p);
+#endif
+    return p;
+}
+
+void save_shfree(const char *name, const char *file, int line, void *ptr)
+{
+#ifdef DEBUG
+    log_action(0, name, file, line, 0, 0, ptr);
+#endif
+    if (ptr != NULL)
+    {
+        shfree(ptr);
+    }
+}
+
+
+
+#endif
+

@@ -43,6 +43,55 @@
 
 #ifdef GMX_SHMEM
 #include <shmem.h>
+#include <smalloc.h>
+
+#ifndef MAX_INT
+#warning "Using manual MAX_INT setting"
+#define MAX_INT 9999999
+#endif
+
+const int MAX_BUFF = 5000;
+
+#define shmem_reset_flag(FLAG) {  FLAG = 0; shmem_barrier_all(); }
+#define shmem_set_flag(FLAG, TARGET) { shmem_int_p(FLAG, 1, TARGET); }
+#define shmem_wait_flag(FLAG) { shmem_int_wait(FLAG, 0); }
+
+
+#ifdef SHMEM_TEMPORARY_BUFFER
+void sh_get_tmp_buf (gmx_domdec_t * dd,
+					  void * ptr,
+					  int size)
+{
+	const int MAX_BUFF = 1000 * sizeof(int);
+
+	if ((dd->shmem_tmp_buf) && (!dd->shmem_alloc) && (size < MAX_BUFF))
+	{
+	   ptr = dd->shmem_tmp_buf;
+	}
+	else
+	{
+	   gmx_fatal(FARGS, "Problem allocating the temporary buffer ");
+	}
+	shmem_barrier_all();
+	return ptr;
+}
+
+void sh_release_tmp_buf (gmx_domdec_t * dd,
+						  void * ptr)
+{
+	shmem_barrier_all();
+	if (dd->shmem_tmp_buf && dd->shmem_alloc)
+	{
+		dd->shmem_alloc = 0;
+	}
+	else
+	{
+		   gmx_fatal(FARGS, "Problem de-allocating the temporary buffer ");
+    }
+}
+#endif
+
+
 #define SHDEBUG(...) { printf("SHMEM(ID:%d,RANK:%d) (domdec_network.c,%d)", _my_pe(), dd->rank, __LINE__); printf(__VA_ARGS__); }
 #endif
 
@@ -65,62 +114,34 @@ void dd_sendrecv_int(const gmx_domdec_t *dd,
 #ifdef GMX_SHMEM
 #warning " Replacing SendRecv int"
     int        rank_s, rank_r;
-    MPI_Status stat;
-    int * sh_buf_s;
     int * sh_buf_r;
-    int i;
-    const static MAX_BUFF = 1000;
+    static int sh_flag;
 
-    sh_buf_s = (int *) shmalloc(MAX_BUFF * sizeof(int));
-    sh_buf_r = (int *) shmalloc(MAX_BUFF * sizeof(int));
+    sh_smalloc(sh_buf_r, MAX_BUFF * sizeof(int));
+    shmem_reset_flag(sh_flag);
 
     rank_s = dd->neighbor[ddimind][direction == dddirForward ? 0 : 1];
     rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
 
-    SHDEBUG(" SendRecv using SHMEM (n_s %d, n_r %d) \n", n_s, n_r);
+    SHDEBUG(" SendRecv (S: %d,R: %d) using SHMEM (n_s %d, n_r %d) \n", rank_s, rank_r, n_s, n_r);
+    SHDEBUG("sh_buf_r accessible %d \n", shmem_addr_accessible(sh_buf_r, rank_s));
 
-   //  if (n_s && n_r)
-    {
-       /* MPI_Sendrecv(buf_s, n_s*sizeof(int), MPI_BYTE, rank_s, 0,
-                     buf_r, n_r*sizeof(int), MPI_BYTE, rank_r, 0,
-                     dd->mpi_comm_all, &stat);*/
-
-        SHDEBUG("sh_buf_r accessible %d \n", shmem_addr_accessible(sh_buf_r, rank_s));
-        SHDEBUG("sh_buf_s accessible %d \n", shmem_addr_accessible(sh_buf_s, rank_s));
-        if (n_s) {
-          memcpy(sh_buf_s, buf_s, n_s * sizeof(int));
-          // Put buf_is in rank_s
-          //               T       S     Len   Pe
-          shmem_int_put(sh_buf_r, sh_buf_s, n_s, rank_s);
-        }
-
-        SHDEBUG(" After the shmem_int_put (%d => %d) \n", _my_pe(), rank_s);
-        shmem_barrier_all();
-        SHDEBUG(" After barrier \n");
-        if (n_r) {
-            memcpy(buf_r, sh_buf_r, n_r * sizeof(int));
-        }
-        SHDEBUG(" After memcpy \n");
-
-
+    if (n_s) {
+    	// Put buf_is in rank_s
+    	//               T       S     Len   Pe
+    	shmem_int_put(sh_buf_r, buf_s, n_s, rank_s);
+    	shmem_quiet();
+    	shmem_set_flag(&sh_flag, rank_s);
     }
-    shmem_barrier_all();
-    SHDEBUG(" Before free \n");
-    if (sh_buf_s) shfree(sh_buf_s);
-    if (sh_buf_r) shfree(sh_buf_r);
-
-    SHDEBUG(" After free \n");
-   /* else if (n_s)
-    {
-        MPI_Send(    buf_s, n_s*sizeof(int), MPI_BYTE, rank_s, 0,
-                     dd->mpi_comm_all);
+    SHDEBUG(" After the shmem_int_put (%d => %d)\n", _my_pe(), rank_s);
+    if (n_r) {
+        shmem_wait_flag(&sh_flag);
+    	SHDEBUG(" Updating reception buffer \n");
+    	memcpy(buf_r, sh_buf_r, n_r * sizeof(int));
     }
-    else if (n_r)
-    {
-        MPI_Recv(    buf_r, n_r*sizeof(int), MPI_BYTE, rank_r, 0,
-                     dd->mpi_comm_all, &stat);
-    }*/
 
+    sh_sfree(sh_buf_r);
+    SHDEBUG("After shfree (end of subroutine)\n");
 
 #elif defined(GMX_MPI)
     int        rank_s, rank_r;
@@ -154,7 +175,40 @@ void dd_sendrecv_real(const gmx_domdec_t *dd,
                       real *buf_s, int n_s,
                       real *buf_r, int n_r)
 {
-#ifdef GMX_MPI
+#ifdef GMX_SHMEM
+#warning " Replacing SendRecv real"
+    int        rank_s, rank_r;
+    real * sh_buf_r;
+    static int sh_flag;
+
+    sh_smalloc(sh_buf_r, MAX_BUFF * sizeof(real));
+    shmem_reset_flag(sh_flag);
+
+    rank_s = dd->neighbor[ddimind][direction == dddirForward ? 0 : 1];
+    rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
+
+    SHDEBUG(" SendRecv (S: %d,R: %d) using SHMEM (n_s %d, n_r %d) \n", rank_s, rank_r, n_s, n_r);
+    SHDEBUG("sh_buf_r accessible %d \n", shmem_addr_accessible(sh_buf_r, rank_s));
+
+    if (n_s) {
+    	// Put buf_is in rank_s
+    	//               T       S     Len   Pe
+    	shmem_float_put(sh_buf_r, buf_s, n_s, rank_s);
+    	shmem_quiet();
+    	shmem_set_flag(&sh_flag, rank_s);
+
+    }
+    SHDEBUG(" After the shmem_real_put (%d => %d)\n", _my_pe(), rank_s);
+    if (n_r) {
+        shmem_wait_flag(&sh_flag);
+    	SHDEBUG(" Updating reception buffer \n");
+    	memcpy(buf_r, sh_buf_r, n_r * sizeof(real));
+    }
+
+    sh_sfree(sh_buf_r);
+    SHDEBUG("After shfree (end of subroutine)\n");
+
+#elif defined(GMX_MPI)
     int        rank_s, rank_r;
     MPI_Status stat;
 

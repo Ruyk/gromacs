@@ -157,6 +157,18 @@ void *save_calloc_aligned(const char *name, const char *file, int line,
 GMX_LIBGMX_EXPORT
 void save_free_aligned(const char *name, const char *file, int line, void *ptr);
 
+
+#ifdef GMX_SHMEM
+/* SHMEM memory allocation */
+
+GMX_LIBGMX_EXPORT
+void *save_shmalloc(const char *name, const char *file, int line, size_t size);
+
+GMX_LIBGMX_EXPORT
+void save_shfree(const char *name, const char *file, int line, void *ptr);
+
+#endif
+
 #ifdef __cplusplus
 }
 
@@ -209,6 +221,17 @@ void _snew_aligned(const char *name, const char *file, int line,
 #define srealloc(ptr, size) _srealloc(#ptr, __FILE__, __LINE__, (ptr), (size))
 #define snew_aligned(ptr, nelem, alignment) _snew_aligned(#ptr, __FILE__, __LINE__, (ptr), (nelem), sizeof(*(ptr)), alignment)
 
+#ifdef GMX_SHMEM
+
+template <typename T>
+void _sh_shmalloc(const char *name, const char *file, int line, T * &ptr, size_t size)
+{
+    ptr = (T *)save_shmalloc(name, file, line, size);
+}
+#define sh_smalloc(ptr, size) _sh_shmalloc(#ptr, __FILE__, __LINE__, (ptr), (size))
+
+#endif /* GMX_SHMEM */
+
 #else
 
 /* These macros work in C, not in C++ */
@@ -229,5 +252,16 @@ void _snew_aligned(const char *name, const char *file, int line,
 /* call this ONLY with a pointer obtained through snew_aligned or
    smalloc_aligned: */
 #define sfree_aligned(ptr) save_free_aligned(#ptr, __FILE__, __LINE__, (ptr))
+
+#ifdef GMX_SHMEM
+/******  SHMEM memory handling
+*/
+
+#define sh_smalloc(ptr, size) (ptr) = save_shmalloc(#ptr, __FILE__, __LINE__, \
+                                             (size))
+
+#define sh_sfree(ptr) save_shfree(#ptr, __FILE__, __LINE__, (ptr))
+
+#endif /* GMX_SHMEM */
 
 #endif  /* _smalloc_h */
