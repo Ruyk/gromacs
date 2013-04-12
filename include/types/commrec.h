@@ -142,6 +142,18 @@ typedef struct {
     int              dbuf_alloc;
 } mpi_in_place_buf_t;
 
+#ifdef GMX_SHMEM
+typedef struct {
+	/* these buffers are used as temporary interchange space for SHMEM
+	 * routines */
+    int  * int_buf;
+    int    int_alloc;
+    real * real_buf;
+    int    real_alloc;
+    rvec * rvec_buf;
+    int    rvec_alloc;
+} gmx_domdec_shmem_buf_t;
+#endif
 
 typedef struct {
     /* The DD particle-particle nodes only */
@@ -235,11 +247,16 @@ typedef struct {
     int   pme_recv_f_alloc;
     rvec *pme_recv_f_buf;
 
-#ifdef SHMEM_TEMPORARY_BUFFER
-    void *shmem_tmp_buf;
+#ifdef GMX_SHMEM
+    /* shmem temporary buffers */
+
+    gmx_domdec_shmem_buf_t * shmem;
 #endif
 
 } gmx_domdec_t;
+
+
+
 
 typedef struct gmx_partdec *gmx_partdec_p_t;
 

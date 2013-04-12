@@ -162,6 +162,10 @@ void save_free_aligned(const char *name, const char *file, int line, void *ptr);
 /* SHMEM memory allocation */
 
 GMX_LIBGMX_EXPORT
+void *save_shcalloc(const char *name, const char *file, int line,
+                  size_t nelem, size_t elsize);
+
+GMX_LIBGMX_EXPORT
 void *save_shmalloc(const char *name, const char *file, int line, size_t size);
 
 GMX_LIBGMX_EXPORT
@@ -228,7 +232,28 @@ void _sh_shmalloc(const char *name, const char *file, int line, T * &ptr, size_t
 {
     ptr = (T *)save_shmalloc(name, file, line, size);
 }
+template <typename T>
+void _sh_snew(const char *name, const char *file, int line,
+           T * &ptr, size_t nelem, size_t elsize)
+{
+    ptr = (T *)save_shcalloc(name, file, line, nelem, elsize);
+}
+template <typename T>
+void _sh_srenew(const char *name, const char *file, int line,
+             T * &ptr, size_t nelem, size_t elsize)
+{
+    ptr = (T *)save_shrealloc(name, file, line, ptr, nelem, elsize);
+}
+template <typename T>
+void _sh_srealloc(const char *name, const char *file, int line, T * &ptr, size_t size)
+{
+    ptr = (T *)save_shrealloc(name, file, line, ptr, size, sizeof(char));
+}
+
 #define sh_smalloc(ptr, size) _sh_shmalloc(#ptr, __FILE__, __LINE__, (ptr), (size))
+#define sh_snew(ptr, nelem) _sh_snew(#ptr, __FILE__, __LINE__, (ptr), (nelem), sizeof(*(ptr)))
+#define sh_srenew(ptr, nelem) _sh_srenew(#ptr, __FILE__, __LINE__, (ptr), (nelem), sizeof(*(ptr)))
+#define sh_srealloc(ptr, size) _sh_srealloc(#ptr, __FILE__, __LINE__, (ptr), (size))
 
 #endif /* GMX_SHMEM */
 
@@ -256,11 +281,16 @@ void _sh_shmalloc(const char *name, const char *file, int line, T * &ptr, size_t
 #ifdef GMX_SHMEM
 /******  SHMEM memory handling
 */
+#define sh_snew(ptr, nelem) (ptr) = save_shcalloc(#ptr, __FILE__, __LINE__, \
+                                             (nelem), sizeof(*(ptr)))
 
 #define sh_smalloc(ptr, size) (ptr) = save_shmalloc(#ptr, __FILE__, __LINE__, \
                                              (size))
 
 #define sh_sfree(ptr) save_shfree(#ptr, __FILE__, __LINE__, (ptr))
+
+#define sh_srenew(ptr, nelem) { (ptr) = save_shrealloc(#ptr, __FILE__, __LINE__, \
+                                                (ptr), (nelem), sizeof(*(ptr))); printf("P outside: %p \n", (ptr)); }
 
 #endif /* GMX_SHMEM */
 

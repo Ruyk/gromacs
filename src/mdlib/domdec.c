@@ -6903,6 +6903,17 @@ gmx_domdec_t *init_domain_decomposition(FILE *fplog, t_commrec *cr,
         /* Without DLB and cutoff_mbody<cutoff, cutoff_mbody is dynamic */
     }
 
+#ifdef GMX_SHMEM
+    /* Initialise the temporary symmetric buffer structure */
+    snew(dd->shmem, 1);
+    dd->shmem->int_alloc  = 0;
+    dd->shmem->real_alloc = 0;
+    dd->shmem->rvec_alloc = 0;
+    dd->shmem->int_buf  = NULL;
+    dd->shmem->real_buf = NULL;
+    dd->shmem->rvec_buf = NULL;
+#endif
+
     if (debug)
     {
         fprintf(debug, "Bonded atom communication beyond the cut-off: %d\n"

@@ -470,6 +470,7 @@ void dd_clear_local_vsite_indices(gmx_domdec_t *dd)
     }
 }
 
+
 static int setup_specat_communication(gmx_domdec_t             *dd,
                                       ind_req_t                *ireq,
                                       gmx_domdec_specat_comm_t *spac,
@@ -529,11 +530,11 @@ static int setup_specat_communication(gmx_domdec_t             *dd,
             dd_sendrecv_int(dd, d, dir == 0 ? dddirForward : dddirBackward,
                             nsend_ptr, 2, spac->nreq[d][dir], 2);
             nr = spac->nreq[d][dir][1];
-            if (nlast+nr > ireq->nalloc)
-            {
-                ireq->nalloc = over_alloc_dd(nlast+nr);
-                srenew(ireq->ind, ireq->nalloc);
-            }
+			if (nlast+nr > ireq->nalloc)
+			{
+			        ireq->nalloc = over_alloc_dd(nlast+nr);
+			        srenew(ireq->ind, ireq->nalloc);
+			}
             /* Communicate the indices */
             dd_sendrecv_int(dd, d, dir == 0 ? dddirForward : dddirBackward,
                             ireq->ind, nsend_ptr[1], ireq->ind+nlast, nr);
