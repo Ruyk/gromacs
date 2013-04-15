@@ -71,9 +71,10 @@ int get_max_alloc(int local_value) {
    int i;
    for (i = 0; i < _SHMEM_REDUCE_SYNC_SIZE; i++)
    {
-	   pSync[i] = SHMEM_SYNC_VALUE;
+	   pSync[i] = _SHMEM_SYNC_VALUE;
    }
    local_max= local_value;
+   shmem_barrier_all();
    shmem_int_max_to_all(&global_max, &local_max, 1, 0, 0, _num_pes(), pWrk, pSync);
    return global_max;
 }
@@ -389,7 +390,46 @@ void dd_sendrecv2_rvec(const gmx_domdec_t *dd,
 
 void dd_bcast(gmx_domdec_t *dd, int nbytes, void *data)
 {
-#ifdef GMX_MPI
+#ifdef GMX_SHMEM
+   static long pSync[_SHMEM_BCAST_SYNC_SIZE];
+   void * buf;
+   int i, size;
+   SHDEBUG(" Bcast of %d bytes (base ptr %p) \n", nbytes, data);
+   for (i = 0; i < _SHMEM_BCAST_SYNC_SIZE; i++)
+   {
+   	pSync[i] = _SHMEM_SYNC_VALUE;
+   }
+   shmem_barrier_all();
+   /* Since the dd_bcast receives a number of bytes, but
+    * broadcast expects a number of elements, we need to adjust
+    * the size of the temporary buffer so it is a multiple of the
+    * size of a pointer to void.
+    * Otherwhise pointer get corrupted.
+    */
+   if (nbytes%sizeof(void *)) {
+	size = nbytes + sizeof(void *) - (nbytes%sizeof(void *));
+   } 
+   else 
+   {
+	size = nbytes;
+   }
+   buf = shmalloc(size);
+   if (DDMASTERRANK(dd) == _my_pe())
+   {
+   	memcpy(buf, data, nbytes);
+	memset(buf + nbytes, 0, size - nbytes);	
+   }
+   SHDEBUG("  buf ptr %p , masterrank %d  \n", buf, DDMASTERRANK(dd));
+   shmem_broadcast(buf, buf, size, DDMASTERRANK(dd), 0, 0, _num_pes(), pSync); 
+   SHDEBUG(" After broadcast  \n");
+   if (DDMASTERRANK(dd) != _my_pe()) 
+   {
+	memcpy(data, buf, nbytes);
+   }
+   shmem_barrier_all();
+   shfree(buf);
+   SHDEBUG(" End of routine \n");
+#elif defined(GMX_MPI)
 #ifdef GMX_BLUEGENE
     if (nbytes > 0)
     {
