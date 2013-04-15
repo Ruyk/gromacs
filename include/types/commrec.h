@@ -150,7 +150,7 @@ typedef struct {
     int    int_alloc;
     real * real_buf;
     int    real_alloc;
-    rvec * rvec_buf;
+    real * rvec_buf;
     int    rvec_alloc;
 } gmx_domdec_shmem_buf_t;
 #endif

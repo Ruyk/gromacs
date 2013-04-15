@@ -78,21 +78,33 @@ int get_max_alloc(int local_value) {
    return global_max;
 }
 
+#define GMX_SHMEM_DEBUG
+#ifndef GMX_SHMEM_DEBUG
+#define shrenew(PTR, OLD_SIZE, NEW_SIZE) (PTR) = sh_renew_buf((PTR), (OLD_SIZE), (NEW_SIZE), sizeof(*(PTR)))
+#else
+
+#define shrenew(PTR, OLD_SIZE, NEW_SIZE) { SHDEBUG(" Before renew , %p size %d \n", PTR, *(OLD_SIZE)); \
+ 					   (PTR) = sh_renew_buf((PTR), (OLD_SIZE), (NEW_SIZE), sizeof(*(PTR))); \
+    					   SHDEBUG(" After renew , %p size %d \n",  PTR, *(OLD_SIZE));\
+					 }
+#endif
+
+
 /* renew the sh tmp buffer if required */
-void * renew_buf(void * buf, int * alloc, const int new_size, const int elem_size) {
+void * sh_renew_buf(void * buf, int * alloc, const int new_size, const int elem_size) {
 	void * p;
 	int global_max;
 	global_max = get_max_alloc(over_alloc_dd(new_size));
    	if (global_max > (*alloc)) {
-   		SHDEBUG(" Updating alloc (%d) to new global max (%d) \n", (*alloc), global_max);
+   		SHDEBUG(" Updating alloc (%d) to new global max (%d) with elem size %d \n", (*alloc), global_max, elem_size);
    		// BUGGY: sh_srenew(buf, (*alloc));
    		(*alloc) = global_max;
-        p = shrealloc(buf, global_max * elem_size);
-        if (!p){
-        	SHDEBUG(" shrealloc returned NULL \n", p)
-        	p = buf;
-        }
-        SHDEBUG(" After update to global max (%d) new buf ptr is %p \n", global_max, buf);
+       	        p = shrealloc(buf, global_max * elem_size);
+       	        if (!p){
+        	   SHDEBUG(" shrealloc returned NULL \n", p)
+        	   p = buf;
+                }
+               SHDEBUG(" After update to global max (%d) new buf ptr is %p \n", global_max, p);
    	} else {
    		p = buf;
    	}
@@ -115,6 +127,7 @@ void * renew_buf(void * buf, int * alloc, const int new_size, const int elem_siz
 #define DDMASTERRANK(dd)   (dd->masterrank)
 
 
+
 void dd_sendrecv_int(const gmx_domdec_t *dd,
                      int ddimind, int direction,
                      int *buf_s, int n_s,
@@ -123,22 +136,20 @@ void dd_sendrecv_int(const gmx_domdec_t *dd,
 #ifdef GMX_SHMEM
 #warning " Replacing SendRecv int"
     int        rank_s, rank_r;
+    gmx_domdec_shmem_buf_t * shmem = dd->shmem;
     static int sh_flag;
-
 
     rank_s = dd->neighbor[ddimind][direction == dddirForward ? 0 : 1];
     rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
 
     SHDEBUG(" SendRecv (S: %d,R: %d) using SHMEM (n_s %d, n_r %d) \n", rank_s, rank_r, n_s, n_r);
-    SHDEBUG(" Before renew , %p size %d \n", dd->shmem->int_buf, dd->shmem->int_alloc);
-    dd->shmem->int_buf = renew_buf(dd->shmem->int_buf, &(dd->shmem->int_alloc), n_s, sizeof(int));
-    SHDEBUG(" After renew , %p size %d \n", dd->shmem->int_buf, dd->shmem->int_alloc);
+    shrenew(shmem->int_buf, &(shmem->int_alloc), n_s);
     shmem_reset_flag(sh_flag);
 
     if (n_s) {
     	// Put buf_is in rank_s
     	//               T       S     Len   Pe
-    	shmem_int_put(dd->shmem->int_buf, buf_s, n_s, rank_s);
+    	shmem_int_put(shmem->int_buf, buf_s, n_s, rank_s);
     	shmem_quiet();
     	shmem_set_flag(&sh_flag, rank_s);
     }
@@ -146,7 +157,7 @@ void dd_sendrecv_int(const gmx_domdec_t *dd,
     if (n_r) {
     	shmem_wait_flag(&sh_flag);
     	SHDEBUG(" Updating reception buffer \n");
-    	memcpy(buf_r, dd->shmem->int_buf, n_r * sizeof(int));
+    	memcpy(buf_r, shmem->int_buf, n_r * sizeof(int));
     }
 
     SHDEBUG("After shfree (end of subroutine)\n");
@@ -183,25 +194,24 @@ void dd_sendrecv_real(const gmx_domdec_t *dd,
                       real *buf_s, int n_s,
                       real *buf_r, int n_r)
 {
-#ifdef GMX_SHMEM_XXX
+#ifdef GMX_SHMEM
 #warning " Replacing SendRecv real"
     int        rank_s, rank_r;
-    real * real_buf = dd->shmem->real_buf;
+    gmx_domdec_shmem_buf_t * shmem = dd->shmem;
     static int sh_flag;
-
-    sh_smalloc(real_buf, MAX_BUFF * sizeof(real));
-    shmem_reset_flag(sh_flag);
 
     rank_s = dd->neighbor[ddimind][direction == dddirForward ? 0 : 1];
     rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
 
     SHDEBUG(" SendRecv (S: %d,R: %d) using SHMEM (n_s %d, n_r %d) \n", rank_s, rank_r, n_s, n_r);
-    SHDEBUG("sh_buf_r accessible %d \n", shmem_addr_accessible(buf_r, rank_s));
+    shrenew(shmem->real_buf, &(shmem->real_alloc), n_s);
+    shmem_reset_flag(sh_flag);
+
 
     if (n_s) {
     	// Put buf_is in rank_s
     	//               T       S     Len   Pe
-    	shmem_float_put(real_buf, buf_s, n_s, rank_s);
+    	shmem_float_put(shmem->real_buf, buf_s, n_s, rank_s);
     	shmem_quiet();
     	shmem_set_flag(&sh_flag, rank_s);
     }
@@ -209,10 +219,9 @@ void dd_sendrecv_real(const gmx_domdec_t *dd,
     if (n_r) {
         shmem_wait_flag(&sh_flag);
     	SHDEBUG(" Updating reception buffer \n");
-    	memcpy(buf_r, real_buf, n_r * sizeof(real));
+    	memcpy(buf_r, shmem->real_buf, n_r * sizeof(real));
     }
 
-    sh_sfree(real_buf);
     SHDEBUG("After shfree (end of subroutine)\n");
 
 #elif defined(GMX_MPI)
@@ -247,35 +256,33 @@ void dd_sendrecv_rvec(const gmx_domdec_t *dd,
                       rvec *buf_s, int n_s,
                       rvec *buf_r, int n_r)
 {
-#ifdef GMX_SHMEM_XXX
+#ifdef GMX_SHMEM
 #warning " Replacing SendRecv rvec"
     int        rank_s, rank_r;
+    gmx_domdec_shmem_buf_t * shmem = dd->shmem;
     static int sh_flag;
-
-    sh_smalloc(dd->shmem_rvec_buf, MAX_BUFF * sizeof(rvec));
-    shmem_reset_flag(sh_flag);
 
     rank_s = dd->neighbor[ddimind][direction == dddirForward ? 0 : 1];
     rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
 
-    SHDEBUG(" SendRecv (S: %d,R: %d) using SHMEM (n_s %d, n_r %d) \n", rank_s, rank_r, n_s, n_r);
-    SHDEBUG("sh_buf_r accessible %d \n", shmem_addr_accessible(sh_buf_r, rank_s));
+    SHDEBUG(" SendRecv (S: %d,R: %d) using SHMEM (n_s %d, n_r %d) (size rvec: %ld) \n", rank_s, rank_r, n_s, n_r, sizeof(rvec));
+    shrenew(shmem->rvec_buf, &(shmem->rvec_alloc), n_s * sizeof(rvec));
+    shmem_reset_flag(sh_flag);
 
     if (n_s) {
     	// Put buf_is in rank_s
     	//               T       S     Len   Pe
-    	shmem_float_put(dd->shmem_rvec_buf[0], buf_s, n_s, rank_s);
+    	shmem_float_put((real *) shmem->rvec_buf, (real *) buf_s, n_s * sizeof(rvec), rank_s);
     	shmem_quiet();
     	shmem_set_flag(&sh_flag, rank_s);
     }
-    SHDEBUG(" After the shmem_real_put (%d => %d)\n", _my_pe(), rank_s);
+    SHDEBUG(" After the shmem_real_put (RVEC) (%d => %d)\n", _my_pe(), rank_s);
     if (n_r) {
         shmem_wait_flag(&sh_flag);
     	SHDEBUG(" Updating reception buffer \n");
-    	memcpy(buf_r, dd->shmem_rvec_buf, n_r * sizeof(rvec));
+    	memcpy(buf_r, shmem->rvec_buf, n_r * sizeof(rvec));
     }
 
-    sh_sfree(dd->shmem_rvec_buf);
     SHDEBUG("After shfree (end of subroutine)\n");
 
 #elif defined(GMX_MPI)

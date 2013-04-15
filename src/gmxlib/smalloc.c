@@ -425,6 +425,51 @@ void save_free_aligned(const char *name, const char *file, int line, void *ptr)
 #ifdef GMX_SHMEM
 /******  SHMEM memory handling
 */
+
+void *save_shcalloc(const char *name, const char *file, int line,
+                  size_t nelem, size_t elsize)
+{
+    void *p;
+
+    p = NULL;
+    if ((nelem == 0) || (elsize == 0))
+    {
+        p = NULL;
+    }
+    else
+    {
+#ifdef PRINT_ALLOC_KB
+        int rank = 0;
+        if (nelem*elsize >= PRINT_ALLOC_KB*1024)
+        {
+#ifdef GMX_MPI
+#include <mpi.h>
+            MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+#endif
+            printf("Allocating %.1f MB for %s (called from file %s, line %d on %d)\n",
+                   nelem*elsize/1048576.0, name, file, line, rank);
+        }
+#endif
+        /* We are forced to emulate calloc(3) when using shmem since there
+         *  is no shmem calloc equivalent. */
+        if ((p = shmalloc((size_t)nelem*(size_t)elsize)) == NULL)
+        {
+            gmx_fatal(errno, __FILE__, __LINE__,
+                      "Not enough memory. Failed to calloc %"gmx_large_int_fmt
+                      " elements of size %"gmx_large_int_fmt
+                      " for %s\n(called from file %s, line %d)",
+                      (gmx_large_int_t)nelem, (gmx_large_int_t)elsize,
+                      name, file, line);
+        }
+        memset(p, 0, (size_t) (nelem * elsize));
+    }
+#ifdef DEBUG
+    log_action(1, name, file, line, nelem, elsize, p);
+#endif
+    return p;
+}
+
+
 void *save_shmalloc(const char *name, const char *file, int line, size_t size)
 {
     void *p;
@@ -464,7 +509,55 @@ void save_shfree(const char *name, const char *file, int line, void *ptr)
     }
 }
 
+void *save_shrealloc(const char *name, const char *file, int line, void *ptr,
+                   size_t nelem, size_t elsize)
+{
+    void  *p;
+    size_t size = nelem*elsize;
 
+    p = NULL;
+    if (size == 0)
+    {
+        save_shfree(name, file, line, ptr);
+    }
+    else
+    {
+#ifdef PRINT_ALLOC_KB
+        int rank = 0;
+        if (size >= PRINT_ALLOC_KB*1024)
+        {
+#ifdef GMX_MPI
+#include <mpi.h>
+            MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+#endif
+            printf("Reallocating %.1f MB for %s (called from file %s, line %d on %d)\n",
+                   size/1048576.0, name, file, line, rank);
+        }
+#endif
+        if (ptr == NULL)
+        {
+            p = shmalloc((size_t)size);
+
+        }
+        else
+        {
+            p = shrealloc(ptr, (size_t)size);
+        }
+        if (p == NULL)
+        {
+            char cbuf[22];
+            gmx_fatal(errno, __FILE__, __LINE__,
+                      "Not enough memory. Failed to realloc %s bytes for %s, %s=%x\n"
+                      "(called from file %s, line %d)",
+                      gmx_large_int_str((gmx_large_int_t)size, cbuf),
+                      name, name, ptr, file, line);
+        }
+#ifdef DEBUG
+        log_action(1, name, file, line, 1, size, p);
+#endif
+    }
+    return p;
+}
 
 #endif
 
