@@ -43,21 +43,28 @@
 
 #ifdef GMX_SHMEM
 #include <shmem.h>
+#include <macros.h>
 #include "smalloc.h"
 #include "typedefs.h"
 #include "gmx_fatal.h"
+
+#define GMX_SHMEM_DEBUG
 
 #ifndef MAX_INT
 #warning "Using manual MAX_INT setting"
 #define MAX_INT 9999999
 #endif
 
-const int MAX_BUFF = 5000;
 
 #define shmem_reset_flag(FLAG) {  FLAG = 0; shmem_barrier_all(); }
 #define shmem_set_flag(FLAG, TARGET) { shmem_int_p(FLAG, 1, TARGET); }
 #define shmem_wait_flag(FLAG) { shmem_int_wait(FLAG, 0); }
+
+#ifdef GMX_SHMEM_DEBUG
 #define SHDEBUG(...) { printf("SHMEM(ID:%d) (domdec_network.c,%d)", _my_pe(), __LINE__); printf(__VA_ARGS__); }
+#else
+#define SHDEBUG(...) ;
+#endif
 
 /* get_max_alloc
  * ========================
@@ -79,7 +86,6 @@ int get_max_alloc(int local_value) {
    return global_max;
 }
 
-#define GMX_SHMEM_DEBUG
 #ifndef GMX_SHMEM_DEBUG
 #define shrenew(PTR, OLD_SIZE, NEW_SIZE) (PTR) = sh_renew_buf((PTR), (OLD_SIZE), (NEW_SIZE), sizeof(*(PTR)))
 #else
@@ -96,19 +102,20 @@ void * sh_renew_buf(void * buf, int * alloc, const int new_size, const int elem_
 	void * p;
 	int global_max;
 	global_max = get_max_alloc(over_alloc_dd(new_size));
-   	if (global_max > (*alloc)) {
-   		SHDEBUG(" Updating alloc (%d) to new global max (%d) with elem size %d \n", (*alloc), global_max, elem_size);
-   		// BUGGY: sh_srenew(buf, (*alloc));
-   		(*alloc) = global_max;
-       	        p = shrealloc(buf, global_max * elem_size);
-       	        if (!p){
-        	   SHDEBUG(" shrealloc returned NULL \n", p)
-        	   p = buf;
-                }
-               SHDEBUG(" After update to global max (%d) new buf ptr is %p \n", global_max, p);
-   	} else {
-   		p = buf;
-   	}
+	if (global_max > (*alloc)) {
+		SHDEBUG(" Updating alloc (%d) to new global max (%d) with elem size %d \n", (*alloc), global_max, elem_size);
+		// BUGGY: sh_srenew(buf, (*alloc));
+		(*alloc) = global_max;
+		p = shrealloc(buf, global_max * elem_size);
+		if (!p){
+			SHDEBUG(" shrealloc returned NULL \n")
+        			   p = buf;
+		}
+		SHDEBUG(" After update to global max (%d) new buf ptr is %p \n", global_max, p);
+	} else {
+		p = buf;
+		SHDEBUG(" Not updating, global max (%d) same buf ptr is %p (alloc: %d) \n", global_max, p, global_max * elem_size);
+	}
 
    	return p;
 }
@@ -212,16 +219,22 @@ void dd_sendrecv_real(const gmx_domdec_t *dd,
     if (n_s) {
     	// Put buf_is in rank_s
     	//               T       S     Len   Pe
+
     	shmem_float_put(shmem->real_buf, buf_s, n_s, rank_s);
+    	;
     	shmem_quiet();
+
     	shmem_set_flag(&sh_flag, rank_s);
+
     }
+
     SHDEBUG(" After the shmem_real_put (%d => %d)\n", _my_pe(), rank_s);
     if (n_r) {
         shmem_wait_flag(&sh_flag);
     	SHDEBUG(" Updating reception buffer \n");
     	memcpy(buf_r, shmem->real_buf, n_r * sizeof(real));
     }
+
 
     SHDEBUG("After shfree (end of subroutine)\n");
 
@@ -273,7 +286,7 @@ void dd_sendrecv_rvec(const gmx_domdec_t *dd,
     if (n_s) {
     	// Put buf_is in rank_s
     	//               T       S     Len   Pe
-    	shmem_float_put((real *) shmem->rvec_buf, (real *) buf_s, n_s * sizeof(rvec), rank_s);
+    	shmem_float_put((real *) shmem->rvec_buf, (real *) buf_s, n_s * DIM, rank_s);
     	shmem_quiet();
     	shmem_set_flag(&sh_flag, rank_s);
     }
@@ -320,7 +333,51 @@ void dd_sendrecv2_rvec(const gmx_domdec_t *dd,
                        rvec *buf_s_bw, int n_s_bw,
                        rvec *buf_r_bw, int n_r_bw)
 {
-#ifdef GMX_MPI
+#ifdef GMX_SHMEM_XXX
+	int         rank_fw, rank_bw, nreq;
+    gmx_domdec_shmem_buf_t * shmem = dd->shmem;
+    static int sh_flag;
+
+    rank_fw = dd->neighbor[ddimind][0];
+    rank_bw = dd->neighbor[ddimind][1];
+
+    SHDEBUG(" SendRecv2 (S: %d,R: %d) using SHMEM \n", rank_fw, rank_bw);
+    shrenew(shmem->rvec_buf, &(shmem->rvec_alloc), max(n_s_fw, n_s_bw) * sizeof(rvec));
+    shmem_reset_flag(sh_flag);
+
+    // 1. Send buf_s_fw to rank_fw, put in buf_r_fw
+    if (n_s_bw) {
+    	// Put buf_is in rank_s
+    	//               T       S     Len   Pe
+    	shmem_float_put((real *) shmem->rvec_buf, (real *) buf_s_fw, n_s_bw * DIM, rank_fw);
+    	shmem_quiet();
+    	shmem_set_flag(&sh_flag, rank_fw);
+    }
+    SHDEBUG(" After the shmem_real_put (RVEC) (%d => %d)\n", _my_pe(), rank_fw);
+    if (n_r_bw) {
+        shmem_wait_flag(&sh_flag);
+    	SHDEBUG(" Updating reception buffer \n");
+    	memcpy(buf_r_bw, shmem->rvec_buf, n_r_bw * sizeof(rvec));
+    }
+    shmem_barrier_all();
+    SHDEBUG(" Second SendRecv \n");
+    // 2. Send buf_s_bw to rank_bw put in buf_r_bw from rank_fw
+    if (n_s_fw)
+    {
+        	// Put buf_is in rank_s
+        	//               T       S     Len   Pe
+        	shmem_float_put((real *) shmem->rvec_buf, (real *) buf_s_bw, n_s_fw * DIM, rank_bw);
+        	shmem_quiet();
+        	shmem_set_flag(&sh_flag, rank_bw);
+    }
+    SHDEBUG(" After the shmem_real_put (RVEC) (%d => %d)\n", _my_pe(), rank_bw);
+    if (n_r_fw) {
+            shmem_wait_flag(&sh_flag);
+        	SHDEBUG(" Updating reception buffer \n");
+        	memcpy(buf_r_fw, shmem->rvec_buf, n_r_fw * sizeof(rvec));
+    }
+
+#elif defined(GMX_MPI)
     int         rank_fw, rank_bw, nreq;
     MPI_Request req[4];
     MPI_Status  stat[4];
@@ -391,59 +448,96 @@ void dd_sendrecv2_rvec(const gmx_domdec_t *dd,
 void dd_bcast(gmx_domdec_t *dd, int nbytes, void *data)
 {
 #ifdef GMX_SHMEM
-   static long pSync[_SHMEM_BCAST_SYNC_SIZE];
-   void * buf;
-   int i, size;
-   SHDEBUG(" Bcast of %d bytes (base ptr %p) \n", nbytes, data);
-   for (i = 0; i < _SHMEM_BCAST_SYNC_SIZE; i++)
-   {
-   	pSync[i] = _SHMEM_SYNC_VALUE;
-   }
-   shmem_barrier_all();
-   /* Since the dd_bcast receives a number of bytes, but
-    * broadcast expects a number of elements, we need to adjust
-    * the size of the temporary buffer so it is a multiple of the
-    * size of a pointer to void.
-    * Otherwhise pointer get corrupted.
-    */
-   if (nbytes%sizeof(void *)) {
-	size = nbytes + sizeof(void *) - (nbytes%sizeof(void *));
-   } 
-   else 
-   {
-	size = nbytes;
-   }
-   buf = shmalloc(size);
-   if (DDMASTERRANK(dd) == _my_pe())
-   {
-   	memcpy(buf, data, nbytes);
-	memset(buf + nbytes, 0, size - nbytes);	
-   }
-   SHDEBUG("  buf ptr %p , masterrank %d  \n", buf, DDMASTERRANK(dd));
-   shmem_broadcast(buf, buf, size, DDMASTERRANK(dd), 0, 0, _num_pes(), pSync); 
-   SHDEBUG(" After broadcast  \n");
-   if (DDMASTERRANK(dd) != _my_pe()) 
-   {
-	memcpy(data, buf, nbytes);
-   }
-   shmem_barrier_all();
-   shfree(buf);
-   SHDEBUG(" End of routine \n");
+	static long pSync[_SHMEM_BCAST_SYNC_SIZE];
+	void * buf;
+	int i, size;
+	SHDEBUG(" Bcast of %d bytes (base ptr %p) \n", nbytes, data);
+	for (i = 0; i < _SHMEM_BCAST_SYNC_SIZE; i++)
+	{
+		pSync[i] = _SHMEM_SYNC_VALUE;
+	}
+	shmem_barrier_all();
+	/* Since the dd_bcast receives a number of bytes, but
+	 * broadcast expects a number of elements, we need to adjust
+	 * the size of the temporary buffer so it is a multiple of the
+	 * size of a pointer to void.
+	 * Otherwise pointer gets corrupted.
+	 */
+	if (nbytes%sizeof(void *)) {
+		size = nbytes + sizeof(void *) - (nbytes%sizeof(void *));
+	}
+	else
+	{
+		size = nbytes;
+	}
+	buf = shmalloc(size);
+	if (DDMASTERRANK(dd) == _my_pe())
+	{
+		memcpy(buf, data, nbytes);
+		memset(buf + nbytes, 0, size - nbytes);
+	}
+	SHDEBUG("  buf ptr %p , masterrank %d  \n", buf, DDMASTERRANK(dd));
+	shmem_broadcast(buf, buf, size, DDMASTERRANK(dd), 0, 0, _num_pes(), pSync);
+	SHDEBUG(" After broadcast  \n");
+	if (DDMASTERRANK(dd) != _my_pe())
+	{
+		memcpy(data, buf, nbytes);
+	}
+	shmem_barrier_all();
+	shfree(buf);
+	SHDEBUG(" End of routine \n");
 #elif defined(GMX_MPI)
 #ifdef GMX_BLUEGENE
-    if (nbytes > 0)
-    {
+	if (nbytes > 0)
+	{
 #endif
-    MPI_Bcast(data, nbytes, MPI_BYTE,
-              DDMASTERRANK(dd), dd->mpi_comm_all);
+		MPI_Bcast(data, nbytes, MPI_BYTE,
+				DDMASTERRANK(dd), dd->mpi_comm_all);
 #ifdef GMX_BLUEGENE
-}
+	}
 #endif
 #endif
 }
 
 void dd_bcastc(gmx_domdec_t *dd, int nbytes, void *src, void *dest)
 {
+#ifdef GMX_SHMEM
+	static long pSync[_SHMEM_BCAST_SYNC_SIZE];
+	void * buf;
+	int i, size;
+	SHDEBUG(" Bcast of %d bytes (base ptr %p) \n", nbytes, src);
+	for (i = 0; i < _SHMEM_BCAST_SYNC_SIZE; i++)
+	{
+		pSync[i] = _SHMEM_SYNC_VALUE;
+	}
+	shmem_barrier_all();
+	/* Since the dd_bcast receives a number of bytes, but
+	 * broadcast expects a number of elements, we need to adjust
+	 * the size of the temporary buffer so it is a multiple of the
+	 * size of a pointer to void.
+	 * Otherwise pointer gets corrupted.
+	 */
+	if (nbytes%sizeof(void *)) {
+		size = nbytes + sizeof(void *) - (nbytes%sizeof(void *));
+	}
+	else
+	{
+		size = nbytes;
+	}
+	buf = shmalloc(size);
+	if (DDMASTERRANK(dd) == _my_pe())
+	{
+		memcpy(buf, src, nbytes);
+		memset(buf + nbytes, 0, size - nbytes);
+	}
+	SHDEBUG("  buf ptr %p , masterrank %d  \n", buf, DDMASTERRANK(dd));
+	shmem_broadcast(buf, buf, size, DDMASTERRANK(dd), 0, 0, _num_pes(), pSync);
+	SHDEBUG(" After broadcast  \n");
+	memcpy(dest, buf, nbytes);
+	shmem_barrier_all();
+	shfree(buf);
+	SHDEBUG(" End of routine \n");
+#else
     if (DDMASTER(dd))
     {
         memcpy(dest, src, nbytes);
@@ -458,7 +552,8 @@ void dd_bcastc(gmx_domdec_t *dd, int nbytes, void *src, void *dest)
 #ifdef GMX_BLUEGENE
 }
 #endif
-#endif
+#endif /* GMX_MPI */
+#endif /* GMX_SHMEM */
 }
 
 void dd_scatter(gmx_domdec_t *dd, int nbytes, void *src, void *dest)
