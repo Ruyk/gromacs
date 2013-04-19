@@ -158,6 +158,7 @@ GMX_LIBGMX_EXPORT
 void save_free_aligned(const char *name, const char *file, int line, void *ptr);
 
 
+
 #ifdef GMX_SHMEM
 /* SHMEM memory allocation */
 
@@ -170,6 +171,10 @@ void *save_shmalloc(const char *name, const char *file, int line, size_t size);
 
 GMX_LIBGMX_EXPORT
 void save_shfree(const char *name, const char *file, int line, void *ptr);
+
+GMX_LIBGMX_EXPORT
+void *save_shrealloc(const char *name, const char *file, int line,
+                     void *ptr, size_t nelem, size_t elsize);
 
 #endif
 
@@ -291,6 +296,13 @@ void _sh_srealloc(const char *name, const char *file, int line, T * &ptr, size_t
 
 #define sh_srenew(ptr, nelem) { (ptr) = save_shrealloc(#ptr, __FILE__, __LINE__, \
                                                 (ptr), (nelem), sizeof(*(ptr))); printf("P outside: %p \n", (ptr)); }
+#define GMX_SHMEM_DEBUG
+#ifdef GMX_SHMEM_DEBUG
+#define SHDEBUG(...) { printf("SHMEM(ID:%d) (%s,%d)", _my_pe(), __FILE__, __LINE__); printf(__VA_ARGS__); }
+#else
+#define SHDEBUG(...) ;
+#endif
+
 
 #endif /* GMX_SHMEM */
 

@@ -152,6 +152,8 @@ typedef struct {
     int    real_alloc;
     real * rvec_buf;
     int    rvec_alloc;
+    void * byte_buf;   /* For collective routines without specific type */
+    int    byte_alloc;
 } gmx_domdec_shmem_buf_t;
 #endif
 

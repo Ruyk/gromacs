@@ -430,7 +430,7 @@ void *save_shcalloc(const char *name, const char *file, int line,
                   size_t nelem, size_t elsize)
 {
     void *p;
-
+    SHDEBUG(" Entering shcalloc for var %s, ptr %p, nelem %ld, elsize %ld \n", name, p, nelem, elsize);
     p = NULL;
     if ((nelem == 0) || (elsize == 0))
     {
@@ -466,6 +466,7 @@ void *save_shcalloc(const char *name, const char *file, int line,
 #ifdef DEBUG
     log_action(1, name, file, line, nelem, elsize, p);
 #endif
+    SHDEBUG(" Outside shcalloc\n ");
     return p;
 }
 
@@ -473,7 +474,7 @@ void *save_shcalloc(const char *name, const char *file, int line,
 void *save_shmalloc(const char *name, const char *file, int line, size_t size)
 {
     void *p;
-
+    SHDEBUG(" Entering shmalloc for var %s, size %ld \n", name, size);
     p = NULL;
     if (size == 0)
     {
@@ -495,6 +496,7 @@ void *save_shmalloc(const char *name, const char *file, int line, size_t size)
 #ifdef DEBUG
     log_action(1, name, file, line, 1, size, p);
 #endif
+    SHDEBUG(" Outside shmalloc \n");
     return p;
 }
 
@@ -514,6 +516,8 @@ void *save_shrealloc(const char *name, const char *file, int line, void *ptr,
 {
     void  *p;
     size_t size = nelem*elsize;
+
+    SHDEBUG(" Entering shrealloc for var %s, ptr %p, nelem %ld, elsize %ld \n", name, ptr, nelem, elsize);
 
     p = NULL;
     if (size == 0)
@@ -555,6 +559,7 @@ void *save_shrealloc(const char *name, const char *file, int line, void *ptr,
 #ifdef DEBUG
         log_action(1, name, file, line, 1, size, p);
 #endif
+        SHDEBUG(" Outside sh_srealloc \n");
     }
     return p;
 }

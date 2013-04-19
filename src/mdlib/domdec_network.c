@@ -60,11 +60,25 @@
 #define shmem_set_flag(FLAG, TARGET) { shmem_int_p(FLAG, 1, TARGET); }
 #define shmem_wait_flag(FLAG) { shmem_int_wait(FLAG, 0); }
 
-#ifdef GMX_SHMEM_DEBUG
-#define SHDEBUG(...) { printf("SHMEM(ID:%d) (domdec_network.c,%d)", _my_pe(), __LINE__); printf(__VA_ARGS__); }
-#else
-#define SHDEBUG(...) ;
-#endif
+
+
+/* round_to_next_multiple
+ * =========================
+ *    Round a number of bytes up to the closest value multiple of the type_size.
+ *    Example: nbytes: 7 , type_size: 8   , size = 8;
+ */
+int round_to_next_multiple(int nbytes, int type_size)
+{
+     int size;
+	if (nbytes%type_size) {
+		size = nbytes + type_size - (nbytes%type_size);
+	}
+	else
+	{
+		size = nbytes;
+	}
+    return size;
+}
 
 /* get_max_alloc
  * ========================
@@ -86,18 +100,13 @@ int get_max_alloc(int local_value) {
    return global_max;
 }
 
-#ifndef GMX_SHMEM_DEBUG
-#define shrenew(PTR, OLD_SIZE, NEW_SIZE) (PTR) = sh_renew_buf((PTR), (OLD_SIZE), (NEW_SIZE), sizeof(*(PTR)))
-#else
-
-#define shrenew(PTR, OLD_SIZE, NEW_SIZE) { SHDEBUG(" Before renew , %p size %d \n", PTR, *(OLD_SIZE)); \
- 					   (PTR) = sh_renew_buf((PTR), (OLD_SIZE), (NEW_SIZE), sizeof(*(PTR))); \
-    					   SHDEBUG(" After renew , %p size %d \n",  PTR, *(OLD_SIZE));\
-					 }
-#endif
 
 
-/* renew the sh tmp buffer if required */
+/* sh_renew_buf
+ * =========================
+ *   Renew a temporary shmem buffer by collectively gathering the maximum
+ *   size of the array in each pe and calling the shrealloc function with that value
+ */
 void * sh_renew_buf(void * buf, int * alloc, const int new_size, const int elem_size) {
 	void * p;
 	int global_max;
@@ -119,6 +128,19 @@ void * sh_renew_buf(void * buf, int * alloc, const int new_size, const int elem_
 
    	return p;
 }
+
+/* shrenew macro simplifies the usage of the sh_renew_buf function in the same fashion of
+ *  those found in the smalloc.{h,c} files.
+ */
+#ifndef GMX_SHMEM_DEBUG
+#define shrenew(PTR, OLD_SIZE, NEW_SIZE) (PTR) = sh_renew_buf((PTR), (OLD_SIZE), (NEW_SIZE), sizeof(*(PTR)))
+#else
+
+#define shrenew(PTR, OLD_SIZE, NEW_SIZE) { SHDEBUG(" Before renew , %p size %d \n", PTR, *(OLD_SIZE)); \
+ 					   (PTR) = sh_renew_buf((PTR), (OLD_SIZE), (NEW_SIZE), sizeof(*(PTR))); \
+    					   SHDEBUG(" After renew , %p size %d \n",  PTR, *(OLD_SIZE));\
+					 }
+#endif
 
 
 
@@ -454,6 +476,7 @@ void dd_bcast(gmx_domdec_t *dd, int nbytes, void *data)
 #ifdef GMX_SHMEM
 	static long pSync[_SHMEM_BCAST_SYNC_SIZE];
 	void * buf;
+	gmx_domdec_shmem_buf_t * shmem = dd->shmem;
 	int i, size;
 	SHDEBUG(" Bcast of %d bytes (base ptr %p) \n", nbytes, data);
 	for (i = 0; i < _SHMEM_BCAST_SYNC_SIZE; i++)
@@ -461,20 +484,16 @@ void dd_bcast(gmx_domdec_t *dd, int nbytes, void *data)
 		pSync[i] = _SHMEM_SYNC_VALUE;
 	}
 	shmem_barrier_all();
-	/* Since the dd_bcast receives a number of bytes, but
-	 * broadcast expects a number of elements, we need to adjust
-	 * the size of the temporary buffer so it is a multiple of the
-	 * size of a pointer to void.
-	 * Otherwise pointer gets corrupted.
+	/* shmem_broadcast expects a number of elements,
+	 *  and assumes that each element of the array
+	 * is separated by sizeof(void *).
+	 * However, nbytes is not necessary a multiple of void *,
+	 * so we have to find the nearest multiple to create the
+	 * temporary buffer.
 	 */
-	if (nbytes%sizeof(void *)) {
-		size = nbytes + sizeof(void *) - (nbytes%sizeof(void *));
-	}
-	else
-	{
-		size = nbytes;
-	}
-	buf = shmalloc(size);
+	size = round_to_next_multiple(nbytes, sizeof(void *));
+	shrenew(shmem->byte_buf, &(shmem->byte_alloc), size);
+	buf = shmem->byte_buf;
 	if (DDMASTERRANK(dd) == _my_pe())
 	{
 		memcpy(buf, data, nbytes);
@@ -487,8 +506,6 @@ void dd_bcast(gmx_domdec_t *dd, int nbytes, void *data)
 	{
 		memcpy(data, buf, nbytes);
 	}
-	shmem_barrier_all();
-	shfree(buf);
 	SHDEBUG(" End of routine \n");
 #elif defined(GMX_MPI)
 #ifdef GMX_BLUEGENE
@@ -508,6 +525,7 @@ void dd_bcastc(gmx_domdec_t *dd, int nbytes, void *src, void *dest)
 #ifdef GMX_SHMEM
 	static long pSync[_SHMEM_BCAST_SYNC_SIZE];
 	void * buf;
+	gmx_domdec_shmem_buf_t * shmem = dd->shmem;
 	int i, size;
 	SHDEBUG(" Bcast of %d bytes (base ptr %p) \n", nbytes, src);
 	for (i = 0; i < _SHMEM_BCAST_SYNC_SIZE; i++)
@@ -515,20 +533,16 @@ void dd_bcastc(gmx_domdec_t *dd, int nbytes, void *src, void *dest)
 		pSync[i] = _SHMEM_SYNC_VALUE;
 	}
 	shmem_barrier_all();
-	/* Since the dd_bcast receives a number of bytes, but
-	 * broadcast expects a number of elements, we need to adjust
-	 * the size of the temporary buffer so it is a multiple of the
-	 * size of a pointer to void.
-	 * Otherwise pointer gets corrupted.
+	/* shmem_broadcast expects a number of elements,
+	 *  and assumes that each element of the array
+	 * is separated by sizeof(void *).
+	 * However, nbytes is not necessary a multiple of void *,
+	 * so we have to find the nearest multiple to create the
+	 * temporary buffer.
 	 */
-	if (nbytes%sizeof(void *)) {
-		size = nbytes + sizeof(void *) - (nbytes%sizeof(void *));
-	}
-	else
-	{
-		size = nbytes;
-	}
-	buf = shmalloc(size);
+	size = round_to_next_multiple(nbytes, sizeof(void *));
+	shrenew(shmem->byte_buf, &(shmem->byte_alloc), size);
+	buf = shmem->byte_buf;
 	if (DDMASTERRANK(dd) == _my_pe())
 	{
 		memcpy(buf, src, nbytes);
@@ -536,10 +550,7 @@ void dd_bcastc(gmx_domdec_t *dd, int nbytes, void *src, void *dest)
 	}
 	SHDEBUG("  buf ptr %p , masterrank %d  \n", buf, DDMASTERRANK(dd));
 	shmem_broadcast(buf, buf, size, DDMASTERRANK(dd), 0, 0, _num_pes(), pSync);
-	SHDEBUG(" After broadcast  \n");
 	memcpy(dest, buf, nbytes);
-	shmem_barrier_all();
-	shfree(buf);
 	SHDEBUG(" End of routine \n");
 #else
     if (DDMASTER(dd))
@@ -562,7 +573,42 @@ void dd_bcastc(gmx_domdec_t *dd, int nbytes, void *src, void *dest)
 
 void dd_scatter(gmx_domdec_t *dd, int nbytes, void *src, void *dest)
 {
-#ifdef GMX_MPI
+#ifdef GMX_SHMEM
+	int i;
+	static int sh_flag;
+	gmx_domdec_shmem_buf_t * shmem = dd->shmem;
+
+	shrenew(shmem->byte_buf, &(shmem->byte_alloc), nbytes);
+	shmem_reset_flag(sh_flag);
+
+    SHDEBUG(" Scatter %p (nbytes %d) \n", shmem->byte_buf, nbytes);
+	if (_my_pe() == DDMASTERRANK(dd))
+	{
+		for (i = 0; i < _num_pes(); i++)
+		{
+			if (_my_pe() != i )
+			{
+				shmem_putmem(shmem->byte_buf, src + (i * nbytes), nbytes, i);
+				shmem_quiet();
+				shmem_set_flag(&sh_flag, i);
+				SHDEBUG(" After putmem of %p (nbytes %d) to %d \n", shmem->byte_buf, nbytes, i);
+			}
+			else
+			{
+				memcpy(dest, src, nbytes);
+			}
+		}
+	}
+	else
+	{
+		/* Wait for flag */
+		shmem_wait_flag(&sh_flag);
+		memcpy(dest, shmem->byte_buf, nbytes);
+		SHDEBUG(" Received in %p (nbytes %d) from root \n", shmem->byte_buf, nbytes);
+	}
+    SHDEBUG(" Outside scatter \n");
+    shmem_barrier_all();
+#elif defined(GMX_MPI)
     MPI_Scatter(src, nbytes, MPI_BYTE,
                 dest, nbytes, MPI_BYTE,
                 DDMASTERRANK(dd), dd->mpi_comm_all);
@@ -571,18 +617,90 @@ void dd_scatter(gmx_domdec_t *dd, int nbytes, void *src, void *dest)
 
 void dd_gather(gmx_domdec_t *dd, int nbytes, void *src, void *dest)
 {
-#ifdef GMX_MPI
+#ifdef GMX_SHMEM
+	gmx_domdec_shmem_buf_t * shmem = dd->shmem;
+	int size;
+	static int sh_flag;
+
+
+    size = _num_pes() * nbytes;
+	shrenew(shmem->byte_buf, &(shmem->byte_alloc), size);
+    shmem_reset_flag(sh_flag);
+
+    shmem_putmem(shmem->byte_buf + (_my_pe() * nbytes), src, nbytes, DDMASTERRANK(dd));
+
+	shmem_barrier_all();
+
+	if (_my_pe() == DDMASTERRANK(dd))
+	{
+		/* Wait for flag */
+		memcpy(dest, shmem->byte_buf, nbytes * _num_pes());
+	}
+#elif defined(GMX_MPI)
     MPI_Gather(src, nbytes, MPI_BYTE,
                dest, nbytes, MPI_BYTE,
                DDMASTERRANK(dd), dd->mpi_comm_all);
 #endif
 }
 
+
 void dd_scatterv(gmx_domdec_t *dd,
                  int *scounts, int *disps, void *sbuf,
                  int rcount, void *rbuf)
 {
-#ifdef GMX_MPI
+#ifdef GMX_SHMEM
+	int i, max_count;
+	gmx_domdec_shmem_buf_t * shmem = dd->shmem;
+	static int sh_flag;
+	SHDEBUG(" ScatterV %p (rcount %d) \n", shmem->byte_buf, rcount);
+
+    max_count = 0;
+    if (_my_pe() == DDMASTERRANK(dd))
+    {
+    	/* Extract the maximum size of the buffer to ensure
+    	 * we are not exceeding the global maximum
+    	 */
+    	for (i = 0; i < _num_pes(); i++)
+    	{
+    		if (scounts[i] > max_count)
+    		{
+    			max_count = scounts[i];
+    		}
+    	}
+    }
+
+	SHDEBUG(" ScatterV %p (size to allocate %d) \n", shmem->byte_buf, max_count);
+    shrenew(shmem->byte_buf, &(shmem->byte_alloc), max_count);
+	shmem_reset_flag(sh_flag);
+
+	if (_my_pe() == DDMASTERRANK(dd))
+	{
+		for (i = 0; i < _num_pes(); i++)
+		{
+			if (_my_pe() != i )
+			{
+				shmem_putmem(shmem->byte_buf, sbuf + (disps[i]), scounts[i], i);
+				shmem_quiet();
+				shmem_set_flag(&sh_flag, i);
+				SHDEBUG(" After putmem of %p (rcount %d) to %d \n", shmem->byte_buf, scounts[i], i);
+			}
+			else
+			{
+				memcpy(rbuf, sbuf + disps[i], rcount);
+			}
+		}
+	}
+	else
+	{
+		/* Wait for flag */
+		shmem_wait_flag(&sh_flag);
+		memcpy(rbuf, shmem->byte_buf, rcount);
+		SHDEBUG(" Received in %p (rcount %d) from root \n", shmem->byte_buf, rcount);
+	}
+	SHDEBUG(" Outside scatter \n");
+	shmem_barrier_all();
+
+#elif defined(GMX_MPI)
     int dum;
 
     if (rcount == 0)
@@ -593,14 +711,54 @@ void dd_scatterv(gmx_domdec_t *dd,
     MPI_Scatterv(sbuf, scounts, disps, MPI_BYTE,
                  rbuf, rcount, MPI_BYTE,
                  DDMASTERRANK(dd), dd->mpi_comm_all);
-#endif
+
 }
+#endif
 
 void dd_gatherv(gmx_domdec_t *dd,
                 int scount, void *sbuf,
                 int *rcounts, int *disps, void *rbuf)
 {
-#ifdef GMX_MPI
+#ifdef GMX_SHMEM_XXX
+	int i, max_count;
+		gmx_domdec_shmem_buf_t * shmem = dd->shmem;
+		static int sh_flag;
+
+		SHDEBUG(" ScatterV %p (rcount %d) \n", shmem->byte_buf, rcount);
+
+	    max_count = 0;
+	    if (_my_pe() == DDMASTERRANK(dd))
+	    {
+	    	/* Extract the maximum size of the buffer to ensure
+	    	 * we are not exceeding the global maximum
+	    	 */
+	    	for (i = 0; i < _num_pes(); i++)
+	    	{
+	    		if (scounts[i] > max_count)
+	    		{
+	    			max_count = scounts[i];
+	    		}
+	    	}
+	    }
+
+		SHDEBUG(" ScatterV %p (size to allocate %d) \n", shmem->byte_buf, max_count);
+	    shrenew(shmem->byte_buf, &(shmem->byte_alloc), max_count);
+		shmem_reset_flag(sh_flag);
+
+        // send count[i] and displ[i] to pe[i]
+        // for (i = 0; i < _num_pes(); i++)
+		shmem_barrier_all();
+        // Put data
+	    shmem_putmem(shmem->byte_buf + (_my_pe() * nbytes), src, nbytes, DDMASTERRANK(dd));
+		shmem_barrier_all();
+
+		if (_my_pe() == DDMASTERRANK(dd))
+		{
+			/* Wait for flag */
+			memcpy(dest, shmem->byte_buf, nbytes * _num_pes());
+		}
+
+#elif defined(GMX_MPI)
     int dum;
 
     if (scount == 0)
