@@ -712,51 +712,67 @@ void dd_scatterv(gmx_domdec_t *dd,
                  rbuf, rcount, MPI_BYTE,
                  DDMASTERRANK(dd), dd->mpi_comm_all);
 
-}
 #endif
+}
+
 
 void dd_gatherv(gmx_domdec_t *dd,
                 int scount, void *sbuf,
                 int *rcounts, int *disps, void *rbuf)
 {
-#ifdef GMX_SHMEM_XXX
-	int i, max_count;
+#ifdef GMX_SHMEM
+		int i, max_count;
 		gmx_domdec_shmem_buf_t * shmem = dd->shmem;
 		static int sh_flag;
+		const int npes = _num_pes();
+		int local_disps[npes];
+		static long pSync[_SHMEM_BCAST_SYNC_SIZE];
+		for (i = 0; i < _SHMEM_BCAST_SYNC_SIZE; i++)
+		{
+			pSync[i] = _SHMEM_SYNC_VALUE;
+		}
 
-		SHDEBUG(" ScatterV %p (rcount %d) \n", shmem->byte_buf, rcount);
+		SHDEBUG(" GatherV %p (rcount %d) \n", shmem->byte_buf, scount);
 
 	    max_count = 0;
 	    if (_my_pe() == DDMASTERRANK(dd))
 	    {
-	    	/* Extract the maximum size of the buffer to ensure
-	    	 * we are not exceeding the global maximum
-	    	 */
-	    	for (i = 0; i < _num_pes(); i++)
-	    	{
-	    		if (scounts[i] > max_count)
-	    		{
-	    			max_count = scounts[i];
-	    		}
-	    	}
+	    	max_count = rcounts[npes-1] + disps[npes-1];
 	    }
 
-		SHDEBUG(" ScatterV %p (size to allocate %d) \n", shmem->byte_buf, max_count);
-	    shrenew(shmem->byte_buf, &(shmem->byte_alloc), max_count);
-		shmem_reset_flag(sh_flag);
+		SHDEBUG(" GatterV %p (size to allocate %d) \n", shmem->byte_buf, max_count);
+		/* We have to ensure that the size of the buffer is greater or equal than
+		 *  the number of process involved, as we use the shmem->byte_buf to communicate
+		 *  the displacement arrays
+		 */
+	    shrenew(shmem->byte_buf, &(shmem->byte_alloc), max(max_count, _num_pes() * sizeof(int)));
+        if (_my_pe() == DDMASTERRANK(dd))
+        {
+        	memcpy(shmem->byte_buf, disps, npes * sizeof(int));
+        	for (i = 0; i < npes; i++)
+               	{
+               		SHDEBUG("==> %d = %d (num: %d)\n", i, disps[i], rcounts[i])
+               	}
+        }
+       	SHDEBUG("Broadcast displ   ptr %p , masterrank %d  \n", disps, DDMASTERRANK(dd));
 
-        // send count[i] and displ[i] to pe[i]
-        // for (i = 0; i < _num_pes(); i++)
-		shmem_barrier_all();
-        // Put data
-	    shmem_putmem(shmem->byte_buf + (_my_pe() * nbytes), src, nbytes, DDMASTERRANK(dd));
-		shmem_barrier_all();
-
-		if (_my_pe() == DDMASTERRANK(dd))
-		{
-			/* Wait for flag */
-			memcpy(dest, shmem->byte_buf, nbytes * _num_pes());
-		}
+       	shmem_broadcast(shmem->byte_buf, shmem->byte_buf, npes * sizeof(int), DDMASTERRANK(dd), 0, 0, npes, pSync);
+       	memcpy(local_disps, shmem->byte_buf, npes * sizeof(int));
+       	SHDEBUG(" Broadcast done, now putting %d from %p in %p + %d \n",
+       			  scount, sbuf, shmem->byte_buf, local_disps[my_pe()]);
+    	for (i = 0; i < npes; i++)
+           	{
+           		SHDEBUG("==> %d = %d \n", i, local_disps[i])
+           	}
+    	if (scount)
+       	    shmem_putmem(shmem->byte_buf + local_disps[_my_pe()], sbuf, scount, DDMASTERRANK(dd));
+       	shmem_barrier_all();
+       	SHDEBUG(" Buf of 0 wrote, this PE contributed %d bytes \n", scount);
+       	if (_my_pe() == DDMASTERRANK(dd))
+       	{
+       		memcpy(rbuf, shmem->byte_buf, max_count);
+       		SHDEBUG("Root has its copy  \n")
+       	}
 
 #elif defined(GMX_MPI)
     int dum;
