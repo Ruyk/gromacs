@@ -423,7 +423,7 @@ void save_free_aligned(const char *name, const char *file, int line, void *ptr)
 
 
 #ifdef GMX_SHMEM
-/******  SHMEM memory handling
+/*  SHMEM memory handling
 */
 
 void *save_shcalloc(const char *name, const char *file, int line,

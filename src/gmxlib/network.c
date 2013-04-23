@@ -959,7 +959,7 @@ void gmx_finalize_par(void)
     }
 
 
-#ifdef _CRAY && GMX_SHMEM
+#if (_CRAY) && (GMX_SHMEM)
     /* Cray implementation requires a call to shmem_finalize before
      *  its MPI counterpart. This is not part of the OpenSHMEM standard
      */

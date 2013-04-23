@@ -296,7 +296,7 @@ void _sh_srealloc(const char *name, const char *file, int line, T * &ptr, size_t
 
 #define sh_srenew(ptr, nelem) { (ptr) = save_shrealloc(#ptr, __FILE__, __LINE__, \
                                                 (ptr), (nelem), sizeof(*(ptr))); printf("P outside: %p \n", (ptr)); }
-#define GMX_SHMEM_DEBUG
+
 #ifdef GMX_SHMEM_DEBUG
 #define SHDEBUG(...) { printf("SHMEM(ID:%d) (%s,%d)", _my_pe(), __FILE__, __LINE__); printf(__VA_ARGS__); }
 #else

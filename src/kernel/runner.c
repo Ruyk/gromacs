@@ -92,6 +92,10 @@
 #include "corewrap.h"
 #endif
 
+#ifdef GMX_SHMEM
+#include "shmem_utils.h"
+#endif
+
 #include "gpu_utils.h"
 #include "nbnxn_cuda_data_mgmt.h"
 
@@ -1632,6 +1636,7 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
                nthreads_pp,
                EI_DYNAMICS(inputrec->eI) && !MULTISIM(cr));
 
+
     if ((cr->duty & DUTY_PP) && fr->nbv != NULL && fr->nbv->bUseGPU)
     {
         char gpu_err_str[STRLEN];
@@ -1650,6 +1655,7 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
     {
         sfree(membed);
     }
+
 
 #ifdef GMX_THREAD_MPI
     if (PAR(cr) && SIMMASTER(cr))
@@ -1677,6 +1683,13 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
     {
         tMPI_Finalize();
     }
+#endif
+
+#ifdef GMX_SHMEM
+     if (DOMAINDECOMP(cr))
+     {
+    	 shmem_cleanup(cr->dd->shmem);
+     }
 #endif
 
     return rc;

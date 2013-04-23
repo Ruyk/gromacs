@@ -42,108 +42,7 @@
 #include "domdec_network.h"
 
 #ifdef GMX_SHMEM
-#include <shmem.h>
-#include <macros.h>
-#include "smalloc.h"
-#include "typedefs.h"
-#include "gmx_fatal.h"
-
-#define GMX_SHMEM_DEBUG
-
-#ifndef MAX_INT
-#warning "Using manual MAX_INT setting"
-#define MAX_INT 9999999
-#endif
-
-
-#define shmem_reset_flag(FLAG) {  FLAG = 0; shmem_barrier_all(); }
-#define shmem_set_flag(FLAG, TARGET) { shmem_int_p(FLAG, 1, TARGET); }
-#define shmem_wait_flag(FLAG) { shmem_int_wait(FLAG, 0); }
-
-
-
-/* round_to_next_multiple
- * =========================
- *    Round a number of bytes up to the closest value multiple of the type_size.
- *    Example: nbytes: 7 , type_size: 8   , size = 8;
- */
-int round_to_next_multiple(int nbytes, int type_size)
-{
-     int size;
-	if (nbytes%type_size) {
-		size = nbytes + type_size - (nbytes%type_size);
-	}
-	else
-	{
-		size = nbytes;
-	}
-    return size;
-}
-
-/* get_max_alloc
- * ========================
- *   Computes the maximum value of memory requested across PEs
- */
-int get_max_alloc(int local_value) {
-   static int global_max = 0;
-   static int local_max;
-   static int pWrk[2>_SHMEM_REDUCE_MIN_WRKDATA_SIZE?2:_SHMEM_REDUCE_MIN_WRKDATA_SIZE];
-   static long pSync[_SHMEM_REDUCE_SYNC_SIZE];
-   int i;
-   for (i = 0; i < _SHMEM_REDUCE_SYNC_SIZE; i++)
-   {
-	   pSync[i] = _SHMEM_SYNC_VALUE;
-   }
-   local_max= local_value;
-   shmem_barrier_all();
-   shmem_int_max_to_all(&global_max, &local_max, 1, 0, 0, _num_pes(), pWrk, pSync);
-   return global_max;
-}
-
-
-
-/* sh_renew_buf
- * =========================
- *   Renew a temporary shmem buffer by collectively gathering the maximum
- *   size of the array in each pe and calling the shrealloc function with that value
- */
-void * sh_renew_buf(void * buf, int * alloc, const int new_size, const int elem_size) {
-	void * p;
-	int global_max;
-	global_max = get_max_alloc(over_alloc_dd(new_size));
-	if (global_max > (*alloc)) {
-		SHDEBUG(" Updating alloc (%d) to new global max (%d) with elem size %d \n", (*alloc), global_max, elem_size);
-		// BUGGY: sh_srenew(buf, (*alloc));
-		(*alloc) = global_max;
-		p = shrealloc(buf, global_max * elem_size);
-		if (!p){
-			SHDEBUG(" shrealloc returned NULL \n")
-        			   p = buf;
-		}
-		SHDEBUG(" After update to global max (%d) new buf ptr is %p \n", global_max, p);
-	} else {
-		p = buf;
-		SHDEBUG(" Not updating, global max (%d) same buf ptr is %p (alloc: %d) \n", global_max, p, global_max * elem_size);
-	}
-
-   	return p;
-}
-
-/* shrenew macro simplifies the usage of the sh_renew_buf function in the same fashion of
- *  those found in the smalloc.{h,c} files.
- */
-#ifndef GMX_SHMEM_DEBUG
-#define shrenew(PTR, OLD_SIZE, NEW_SIZE) (PTR) = sh_renew_buf((PTR), (OLD_SIZE), (NEW_SIZE), sizeof(*(PTR)))
-#else
-
-#define shrenew(PTR, OLD_SIZE, NEW_SIZE) { SHDEBUG(" Before renew , %p size %d \n", PTR, *(OLD_SIZE)); \
- 					   (PTR) = sh_renew_buf((PTR), (OLD_SIZE), (NEW_SIZE), sizeof(*(PTR))); \
-    					   SHDEBUG(" After renew , %p size %d \n",  PTR, *(OLD_SIZE));\
-					 }
-#endif
-
-
-
+#include "shmem_utils.h"
 #endif
 
 #ifdef GMX_LIB_MPI
@@ -237,17 +136,12 @@ void dd_sendrecv_real(const gmx_domdec_t *dd,
     shrenew(shmem->real_buf, &(shmem->real_alloc), n_s);
     shmem_reset_flag(sh_flag);
 
-
     if (n_s) {
     	// Put buf_is in rank_s
     	//               T       S     Len   Pe
-
     	shmem_float_put(shmem->real_buf, buf_s, n_s, rank_s);
-    	;
     	shmem_quiet();
-
     	shmem_set_flag(&sh_flag, rank_s);
-
     }
 
     SHDEBUG(" After the shmem_real_put (%d => %d)\n", _my_pe(), rank_s);
