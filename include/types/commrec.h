@@ -51,6 +51,10 @@ typedef void* MPI_Group;
 #endif
 #endif
 
+#ifdef GMX_SHMEM
+#include "shmem_utils.h"
+#endif
+
 #include "idef.h"
 
 #ifdef __cplusplus
@@ -142,20 +146,6 @@ typedef struct {
     int              dbuf_alloc;
 } mpi_in_place_buf_t;
 
-#ifdef GMX_SHMEM
-typedef struct {
-	/* these buffers are used as temporary interchange space for SHMEM
-	 * routines */
-    int  * int_buf;
-    int    int_alloc;
-    real * real_buf;
-    int    real_alloc;
-    real * rvec_buf;
-    int    rvec_alloc;
-    void * byte_buf;   /* For collective routines without specific type */
-    int    byte_alloc;
-} gmx_domdec_shmem_buf_t;
-#endif
 
 typedef struct {
     /* The DD particle-particle nodes only */

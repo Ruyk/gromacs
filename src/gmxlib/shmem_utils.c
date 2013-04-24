@@ -58,6 +58,32 @@
 
 #ifdef GMX_SHMEM
 
+void init_shmem_buf(gmx_domdec_shmem_buf_t * shmem)
+{
+    shmem->int_alloc  = 0;
+    shmem->real_alloc = 0;
+    shmem->rvec_alloc = 0;
+    shmem->int_buf  = NULL;
+    shmem->real_buf = NULL;
+    shmem->rvec_buf = NULL;
+    sh_snew(shmem->wait_events, _num_pes());
+}
+
+void shmem_set_flag(gmx_domdec_shmem_buf_t * shmem, int target_pe)
+{
+	shmem_set_event( ( shmem->wait_events ) + target_pe  );
+}
+
+void shmem_reset_flag(gmx_domdec_shmem_buf_t * shmem)
+{
+	 shmem_clear_event( ( shmem->wait_events ) + _my_pe() );
+	 shmem_barrier_all();
+}
+void shmem_wait_flag(gmx_domdec_shmem_buf_t * shmem)
+{
+	shmem_wait_event( ( shmem->wait_events ) + _my_pe() );
+}
+
 void shmem_cleanup(gmx_domdec_shmem_buf_t * shmem)
 {
 	if (!shmem)
@@ -70,6 +96,8 @@ void shmem_cleanup(gmx_domdec_shmem_buf_t * shmem)
 	shmem->int_alloc = 0;
 	shmem->real_alloc = 0;
 	shmem->byte_alloc = 0;
+
+	sh_sfree(shmem->wait_events);
 }
 
 int round_to_next_multiple(int nbytes, int type_size)

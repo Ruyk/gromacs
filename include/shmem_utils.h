@@ -63,14 +63,37 @@
 
 #include "smalloc.h"
 #include "typedefs.h"
-#include "types/commrec.h"
 #include "gmx_fatal.h"
 
+typedef struct {
+	/* these buffers are used as temporary interchange space for SHMEM
+	 * routines */
+    int  * int_buf;
+    int    int_alloc;
+    real * real_buf;
+    int    real_alloc;
+    real * rvec_buf;
+    int    rvec_alloc;
+    void * byte_buf;   /* For collective routines without specific type */
+    int    byte_alloc;
+    /* An event array to synchronize shmem operations without using a global barrier */
+    long * wait_events;
+} gmx_domdec_shmem_buf_t;
 
 
-#define shmem_reset_flag(FLAG) {  FLAG = 0; shmem_barrier_all(); }
-#define shmem_set_flag(FLAG, TARGET) { shmem_int_p(FLAG, 1, TARGET); }
-#define shmem_wait_flag(FLAG) { shmem_int_wait(FLAG, 0); }
+/* Flag handling
+ *
+ * The flag is used to indicate the target PE that the new data has been written.
+ * Originally was implemented using shmem_wait of a flag (hence the name) but has
+ * been rewritten using shmem events.
+ */
+typedef long shmem_flag_t;
+
+void shmem_reset_flag(gmx_domdec_shmem_buf_t * shmem);
+void shmem_wait_flag(gmx_domdec_shmem_buf_t * shmem);
+void shmem_set_flag(gmx_domdec_shmem_buf_t * shmem, int target_pe);
+
+
 
 /* round_to_next_multiple
  * =========================
