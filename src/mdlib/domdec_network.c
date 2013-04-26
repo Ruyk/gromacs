@@ -507,30 +507,22 @@ void dd_scatter(gmx_domdec_t *dd, int nbytes, void *src, void *dest)
 	shrenew(shmem->byte_buf, &(shmem->byte_alloc), nbytes);
 
     SHDEBUG(" Scatter %p (nbytes %d) \n", shmem->byte_buf, nbytes);
+
 	if (_my_pe() == DDMASTERRANK(dd))
 	{
-		for (i = 0; i < _num_pes(); i++)
-		{
-			if (_my_pe() != i )
-			{
-				// shmem_reset_flag(shmem, _my_pe());
-				shmem_putmem(shmem->byte_buf, src + (i * nbytes), nbytes, i);
-				// shmem_set_flag(shmem, _my_pe());
-				SHDEBUG(" After putmem of %p (nbytes %d) to %d \n", shmem->byte_buf, nbytes, i);
-			}
-			else
-			{
-				memcpy(dest, src, nbytes);
-			}
-		}
+
+		memcpy(shmem->byte_buf, src, nbytes * _num_pes());
 	}
 
 	shmem_barrier_all();
 
 	if (_my_pe() != DDMASTERRANK(dd))
 	{
-		memcpy(dest, shmem->byte_buf, nbytes);
-		SHDEBUG(" Received in %p (nbytes %d) from root \n", shmem->byte_buf, nbytes);
+		shmem_getmem(dest, shmem->byte_buf + (_my_pe() * nbytes), nbytes, DDMASTERRANK(dd));
+	}
+	else
+	{
+		memcpy(dest, src + (_my_pe() * nbytes), nbytes);
 	}
     SHDEBUG(" Outside scatter \n");
     shmem_barrier_all();
