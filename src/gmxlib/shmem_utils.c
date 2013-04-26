@@ -60,35 +60,31 @@
 
 void init_shmem_buf(gmx_domdec_shmem_buf_t * shmem)
 {
+	if (!shmem)
+			gmx_fatal(FARGS, "Cannot initialise an empty shmem structure");
     shmem->int_alloc  = 0;
     shmem->real_alloc = 0;
     shmem->rvec_alloc = 0;
     shmem->int_buf  = NULL;
     shmem->real_buf = NULL;
     shmem->rvec_buf = NULL;
-    sh_snew(shmem->wait_events, _num_pes());
+    /* Init p2p sync */
+    sh_snew(shmem->post_events, _num_pes());
+    shmem_clear_event(shmem->post_events + _my_pe());
+    sh_snew(shmem->done_events, _num_pes());
+    shmem_clear_event(shmem->done_events + _my_pe());
+    /* Init locks */
+    sh_snew(shmem->lock, _num_pes());
+    shmem_clear_lock(shmem->lock + _my_pe());
+    shmem_barrier_all();
 }
 
-void shmem_set_flag(gmx_domdec_shmem_buf_t * shmem, int target_pe)
-{
-	shmem_set_event( ( shmem->wait_events ) + target_pe  );
-}
-
-void shmem_reset_flag(gmx_domdec_shmem_buf_t * shmem)
-{
-	 shmem_clear_event( ( shmem->wait_events ) + _my_pe() );
-	 shmem_barrier_all();
-}
-void shmem_wait_flag(gmx_domdec_shmem_buf_t * shmem)
-{
-	shmem_wait_event( ( shmem->wait_events ) + _my_pe() );
-}
-
-void shmem_cleanup(gmx_domdec_shmem_buf_t * shmem)
+void done_shmem_buf(gmx_domdec_shmem_buf_t * shmem)
 {
 	if (!shmem)
-		gmx_fatal(FARGS, "Cannot cleanup an empty dd structure");
+		gmx_fatal(FARGS, "Cannot cleanup an empty shmem structure");
 
+	shmem_barrier_all();
 	sh_sfree(shmem->int_buf);
 	sh_sfree(shmem->real_buf);
 	sh_sfree(shmem->byte_buf);
@@ -97,8 +93,85 @@ void shmem_cleanup(gmx_domdec_shmem_buf_t * shmem)
 	shmem->real_alloc = 0;
 	shmem->byte_alloc = 0;
 
-	sh_sfree(shmem->wait_events);
+	sh_sfree(shmem->post_events);
+	sh_sfree(shmem->done_events);
+	sh_sfree(shmem->lock);
 }
+
+
+void shmem_set_post      (gmx_domdec_shmem_buf_t * shmem, int pe)
+{
+	SHDEBUG(" Setting post on %d \n", pe);
+	shmem_quiet();
+	shmem_set_event(shmem->post_events + pe);
+}
+
+void shmem_clear_post    (gmx_domdec_shmem_buf_t * shmem, int pe)
+{
+	shmem_quiet();
+	SHDEBUG(" Clearing post on %d \n", pe);
+	shmem_clear_event(shmem->post_events + pe);
+}
+
+void shmem_wait_post     (gmx_domdec_shmem_buf_t * shmem, int pe)
+{
+	shmem_quiet();
+	SHDEBUG(" Waiting for post on %d \n", pe);
+	shmem_wait_event(shmem->post_events + pe);
+	SHDEBUG(" Posted on %d \n", pe);
+}
+
+void shmem_wait_done     (gmx_domdec_shmem_buf_t * shmem, int pe)
+{
+	SHDEBUG(" Waiting for done on %d \n", pe);
+	shmem_quiet();
+	shmem_wait_event(shmem->done_events + pe);
+	SHDEBUG(" Received done on %d \n", pe);
+}
+
+void shmem_set_done     (gmx_domdec_shmem_buf_t * shmem, int pe)
+{
+	SHDEBUG(" Setting done on %d \n", pe);
+	shmem_quiet();
+	shmem_set_event(shmem->done_events + pe);
+}
+
+void shmem_clear_done  (gmx_domdec_shmem_buf_t * shmem, int pe)
+{
+	SHDEBUG(" Clearing done on %d \n", pe);
+	shmem_clear_event(shmem->done_events + pe);
+}
+
+gmx_bool shmem_is_posted(gmx_domdec_shmem_buf_t * shmem, int pe)
+{
+	return shmem_test_event(shmem->post_events + pe);
+}
+
+
+/* Lock handling
+ */
+
+
+void shmem_lock(gmx_domdec_shmem_buf_t * shmem, int pe)
+{
+	SHDEBUG(" Waiting for lock on %d \n", pe);
+    shmem_set_lock(shmem->lock + pe);
+    SHDEBUG(" Acquired lock on %d \n", pe);
+}
+
+void shmem_unlock(gmx_domdec_shmem_buf_t * shmem, int pe)
+{
+	SHDEBUG(" Leaving lock on %d \n", pe);
+	shmem_clear_lock(shmem->lock + pe);
+}
+
+gmx_bool shmem_is_locked(gmx_domdec_shmem_buf_t * shmem, int pe)
+{
+	return shmem_test_lock(shmem->lock + pe);
+}
+
+
+
 
 int round_to_next_multiple(int nbytes, int type_size)
 {

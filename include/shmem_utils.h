@@ -58,12 +58,17 @@
 #define SHMEM_UTILS_H_
 
 #ifdef GMX_SHMEM
+
+// #define GMX_SHMEM_DEBUG
+
 #include <shmem.h>
 #include <macros.h>
 
 #include "smalloc.h"
 #include "typedefs.h"
 #include "gmx_fatal.h"
+
+typedef long shmem_flag_t;
 
 typedef struct {
 	/* these buffers are used as temporary interchange space for SHMEM
@@ -74,11 +79,16 @@ typedef struct {
     int    real_alloc;
     real * rvec_buf;
     int    rvec_alloc;
-    void * byte_buf;   /* For collective routines without specific type */
+    void * byte_buf;   /* For collective routines without specific type (e.g broadcast) */
     int    byte_alloc;
     /* An event array to synchronize shmem operations without using a global barrier */
-    long * wait_events;
+    shmem_flag_t * post_events;
+    shmem_flag_t * done_events;
+    /* Array of locks (i-th is the lock for the i-th pe) */
+    shmem_flag_t * lock;
+
 } gmx_domdec_shmem_buf_t;
+
 
 
 /* Flag handling
@@ -87,12 +97,31 @@ typedef struct {
  * Originally was implemented using shmem_wait of a flag (hence the name) but has
  * been rewritten using shmem events.
  */
-typedef long shmem_flag_t;
 
-void shmem_reset_flag(gmx_domdec_shmem_buf_t * shmem);
-void shmem_wait_flag(gmx_domdec_shmem_buf_t * shmem);
-void shmem_set_flag(gmx_domdec_shmem_buf_t * shmem, int target_pe);
+void shmem_set_post      (gmx_domdec_shmem_buf_t * shmem, int pe);
+void shmem_clear_post    (gmx_domdec_shmem_buf_t * shmem, int pe);
+void shmem_wait_post     (gmx_domdec_shmem_buf_t * shmem, int pe);
 
+void shmem_set_done      (gmx_domdec_shmem_buf_t * shmem, int pe);
+void shmem_clear_done    (gmx_domdec_shmem_buf_t * shmem, int pe);
+void shmem_wait_done     (gmx_domdec_shmem_buf_t * shmem, int pe);
+
+/* Lock handling */
+void shmem_lock          (gmx_domdec_shmem_buf_t * shmem, int pe);
+void shmem_unlock        (gmx_domdec_shmem_buf_t * shmem, int pe);
+gmx_bool shmem_is_locked (gmx_domdec_shmem_buf_t * shmem, int pe);
+
+
+/* init_shmem_buf
+ * =========================
+ * 	  Initialises shmem_buf structure. Fatal if shmem is NULL.
+ */
+void init_shmem_buf(gmx_domdec_shmem_buf_t * shmem);
+/* done_shmem_buf
+ * =========================
+ * 	  Free the shmem temporary buffers , Fatal if shmem is NULL.
+ */
+void done_shmem_buf(gmx_domdec_shmem_buf_t * shmem);
 
 
 /* round_to_next_multiple
@@ -128,11 +157,7 @@ void * sh_renew_buf(void * buf, int * alloc, const int new_size, const int elem_
     					   SHDEBUG(" After renew , %p size %d \n",  PTR, *(OLD_SIZE));\
 					 }
 
-/* shmem_cleanup
- * =========================
- * 	  Free the shmem temporary buffers , fatal if shmem is NULL.
- */
-void shmem_cleanup(gmx_domdec_shmem_buf_t * shmem);
+
 
 #endif
 

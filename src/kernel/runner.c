@@ -1688,7 +1688,7 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
 #ifdef GMX_SHMEM
      if (DOMAINDECOMP(cr))
      {
-    	 shmem_cleanup(cr->dd->shmem);
+    	 done_shmem_buf(cr->dd->shmem);
      }
 #endif
 
