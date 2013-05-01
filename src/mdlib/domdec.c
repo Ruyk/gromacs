@@ -550,6 +550,14 @@ static void vec_rvec_init(vec_rvec_t *v)
     v->v      = NULL;
 }
 
+
+#ifdef GMX_SHMEM
+static void vec_rvec_check_alloc_shmem(vec_rvec_t *v, int n)
+{
+	shrenew(v->v, &(v->nalloc), n);
+}
+#endif /* GMX_SHMEM */
+
 static void vec_rvec_check_alloc(vec_rvec_t *v, int n)
 {
     if (n > v->nalloc)
@@ -558,6 +566,8 @@ static void vec_rvec_check_alloc(vec_rvec_t *v, int n)
         srenew(v->v, v->nalloc);
     }
 }
+
+
 
 void dd_store_state(gmx_domdec_t *dd, t_state *state)
 {
@@ -1680,9 +1690,62 @@ static void dd_realloc_state(t_state *state, rvec **f, int nalloc)
 
     if (f != NULL)
     {
-        srenew(*f, state->nalloc);
+		srenew(*f, state->nalloc);
     }
 }
+
+#ifdef GMX_SHMEM
+static void dd_realloc_state_shmem(t_state *state, rvec **f, int nalloc)
+{
+    int est;
+
+    if (debug)
+    {
+        fprintf(debug, "Reallocating state: currently %d, required %d, allocating %d\n", state->nalloc, nalloc, over_alloc_dd(nalloc));
+    }
+
+    // state->nalloc = over_alloc_dd(nalloc);
+    state->nalloc = get_max_alloc(over_alloc_dd(nalloc));
+
+    for (est = 0; est < estNR; est++)
+    {
+        if (EST_DISTR(est) && (state->flags & (1<<est)))
+        {
+            switch (est)
+            {
+                case estX:
+                    srenew(state->x, state->nalloc);
+                    break;
+                case estV:
+                    srenew(state->v, state->nalloc);
+                    break;
+                case estSDX:
+                    srenew(state->sd_X, state->nalloc);
+                    break;
+                case estCGP:
+                    srenew(state->cg_p, state->nalloc);
+                    break;
+                case estLD_RNG:
+                case estLD_RNGI:
+                case estDISRE_INITF:
+                case estDISRE_RM3TAV:
+                case estORIRE_INITF:
+                case estORIRE_DTAV:
+                    /* No reallocation required */
+                    break;
+                default:
+                    gmx_incons("Unknown state entry encountered in dd_realloc_state");
+            }
+        }
+    }
+
+    if (f != NULL)
+    {
+        sh_srenew(*f, state->nalloc);
+
+    }
+}
+#endif
 
 static void dd_check_alloc_ncg(t_forcerec *fr, t_state *state, rvec **f,
                                int nalloc)
@@ -1700,6 +1763,12 @@ static void dd_check_alloc_ncg(t_forcerec *fr, t_state *state, rvec **f,
             srenew(fr->cg_cm, fr->cg_nalloc);
         }
     }
+#ifdef GMX_SHMEM
+    if (fr->cutoff_scheme == ecutsVERLET)
+    {
+        dd_realloc_state_shmem(state, f, nalloc);
+    }
+#else
     if (fr->cutoff_scheme == ecutsVERLET && nalloc > state->nalloc)
     {
         /* We don't use charge groups, we use x in state to set up
@@ -1707,6 +1776,7 @@ static void dd_check_alloc_ncg(t_forcerec *fr, t_state *state, rvec **f,
          */
         dd_realloc_state(state, f, nalloc);
     }
+#endif
 }
 
 static void dd_distribute_vec_sendrecv(gmx_domdec_t *dd, t_block *cgs,
@@ -1868,10 +1938,14 @@ static void dd_distribute_state(gmx_domdec_t *dd, t_block *cgs,
     dd_bcast(dd, ((state_local->nnhpres*nh)*sizeof(double)), state_local->nhpres_xi);
     dd_bcast(dd, ((state_local->nnhpres*nh)*sizeof(double)), state_local->nhpres_vxi);
 
+#ifdef GMX_SHMEM
+     dd_realloc_state_shmem(state_local, f, dd->nat_home);
+#else
     if (dd->nat_home > state_local->nalloc)
     {
         dd_realloc_state(state_local, f, dd->nat_home);
     }
+#endif
     for (i = 0; i < estNR; i++)
     {
         if (EST_DISTR(i) && (state_local->flags & (1<<i)))
@@ -4865,8 +4939,11 @@ static void dd_redistribute_cg(FILE *fplog, gmx_large_int_t step,
 
             nvs = ncg[cdd] + nat[cdd]*nvec;
             i   = rbuf[0]  + rbuf[1] *nvec;
+#ifdef GMX_SHMEM
+            vec_rvec_check_alloc_shmem(&comm->vbuf, nvr+i);
+#else
             vec_rvec_check_alloc(&comm->vbuf, nvr+i);
-
+#endif
             /* Communicate cgcm and state */
             dd_sendrecv_rvec(dd, d, dir,
                              comm->cgcm_state[cdd], nvs,
@@ -5004,10 +5081,14 @@ static void dd_redistribute_cg(FILE *fplog, gmx_large_int_t step,
                     comm->bLocalCG[dd->index_gl[home_pos_cg]] = TRUE;
                 }
 
+#ifdef GMX_SHMEM
+                dd_realloc_state_shmem(state, f, home_pos_at+nrcg);
+#else
                 if (home_pos_at+nrcg > state->nalloc)
                 {
                     dd_realloc_state(state, f, home_pos_at+nrcg);
                 }
+#endif
                 for (i = 0; i < nrcg; i++)
                 {
                     copy_rvec(comm->vbuf.v[buf_pos++],
@@ -8096,6 +8177,7 @@ static void setup_dd_communication(gmx_domdec_t *dd,
         v_d         = ddbox->v[dim];
         skew_fac2_d = sqr(ddbox->skew_fac[dim]);
 
+
         cd->bInPlace = TRUE;
         for (p = 0; p < cd->np; p++)
         {
@@ -8220,7 +8302,7 @@ static void setup_dd_communication(gmx_domdec_t *dd,
                                        vbuf_p,
                                        nsend_p, nat_p,
                                        nsend_zone_p);
-                }
+                } /* OpenMP parallel for */
 
                 /* Append data of threads>=1 to the communication buffers */
                 for (th = 1; th < comm->nth; th++)
@@ -8231,21 +8313,36 @@ static void setup_dd_communication(gmx_domdec_t *dd,
                     dth = &comm->dth[th];
 
                     ns1 = nsend + dth->nsend_zone;
+#ifdef GMX_SHMEM_XXX
+                    shrenew(ind->index, &ind->nalloc, ns1);
+#else
                     if (ns1 > ind->nalloc)
                     {
                         ind->nalloc = over_alloc_dd(ns1);
                         srenew(ind->index, ind->nalloc);
                     }
+#endif
+#ifdef GMX_SHMEM_XXX
+                    shrenew(comm->buf_int, &comm->nalloc_int, ns1);
+#else
                     if (ns1 > comm->nalloc_int)
                     {
                         comm->nalloc_int = over_alloc_dd(ns1);
                         srenew(comm->buf_int, comm->nalloc_int);
                     }
+#endif
+#ifdef GMX_SHMEM
+                    vec_rvec_check_alloc_shmem(&comm->vbuf, ns1);
+#else
+                    /* TODO: This should use the vec_rvec_check_alloc routine
+                     */
                     if (ns1 > comm->vbuf.nalloc)
                     {
                         comm->vbuf.nalloc = over_alloc_dd(ns1);
                         srenew(comm->vbuf.v, comm->vbuf.nalloc);
                     }
+#endif
+
 
                     for (i = 0; i < dth->nsend_zone; i++)
                     {
@@ -8257,8 +8354,8 @@ static void setup_dd_communication(gmx_domdec_t *dd,
                     }
                     nat              += dth->nat;
                     ind->nsend[zone] += dth->nsend_zone;
-                }
-            }
+                } /* end for nth */
+            } /* end zone */
             /* Clear the counts in case we do not have pbc */
             for (zone = nzone_send; zone < nzone; zone++)
             {
@@ -8266,6 +8363,7 @@ static void setup_dd_communication(gmx_domdec_t *dd,
             }
             ind->nsend[nzone]   = nsend;
             ind->nsend[nzone+1] = nat;
+
             /* Communicate the number of cg's and atoms to receive */
             dd_sendrecv_int(dd, dim_ind, dddirBackward,
                             ind->nsend, nzone+2,
@@ -8274,7 +8372,13 @@ static void setup_dd_communication(gmx_domdec_t *dd,
             /* The rvec buffer is also required for atom buffers of size nsend
              * in dd_move_x and dd_move_f.
              */
+#ifdef GMX_SHMEM
+            vec_rvec_check_alloc_shmem(&comm->vbuf, ind->nsend[nzone+1]);
+#else
             vec_rvec_check_alloc(&comm->vbuf, ind->nsend[nzone+1]);
+#endif
+
+
 
             if (p > 0)
             {
@@ -8289,20 +8393,35 @@ static void setup_dd_communication(gmx_domdec_t *dd,
                 if (!cd->bInPlace)
                 {
                     /* The int buffer is only required here for the cg indices */
+#ifdef GMX_SHMEM
+                	shrenew(comm->buf_int2, &comm->nalloc_int2, ind->nrecv[nzone]);
+#else
                     if (ind->nrecv[nzone] > comm->nalloc_int2)
                     {
                         comm->nalloc_int2 = over_alloc_dd(ind->nrecv[nzone]);
                         srenew(comm->buf_int2, comm->nalloc_int2);
                     }
+#endif
                     /* The rvec buffer is also required for atom buffers
                      * of size nrecv in dd_move_x and dd_move_f.
                      */
                     i = max(cd->ind[0].nrecv[nzone+1], ind->nrecv[nzone+1]);
+#ifdef GMX_SHMEM
+                    vec_rvec_check_alloc_shmem(&comm->vbuf2, i);
+#else
                     vec_rvec_check_alloc(&comm->vbuf2, i);
+#endif
                 }
             }
 
             /* Make space for the global cg indices */
+#ifdef GMX_SHMEM_XXX
+            if (dd->cg_nalloc == 0)
+            {
+            	shrenew(index_gl, &dd->cg_nalloc, pos_cg + ind->nrecv[nzone]);
+            	shrenew(cgindex, &dd->cg_nalloc, pos_cg + ind->nrecv[nzone] + 1);
+            }
+#else
             if (pos_cg + ind->nrecv[nzone] > dd->cg_nalloc
                 || dd->cg_nalloc == 0)
             {
@@ -8310,6 +8429,7 @@ static void setup_dd_communication(gmx_domdec_t *dd,
                 srenew(index_gl, dd->cg_nalloc);
                 srenew(cgindex, dd->cg_nalloc+1);
             }
+#endif
             /* Communicate the global cg indices */
             if (cd->bInPlace)
             {
@@ -8319,6 +8439,7 @@ static void setup_dd_communication(gmx_domdec_t *dd,
             {
                 recv_i = comm->buf_int2;
             }
+
             dd_sendrecv_int(dd, dim_ind, dddirBackward,
                             comm->buf_int, nsend,
                             recv_i,        ind->nrecv[nzone]);
@@ -8391,7 +8512,8 @@ static void setup_dd_communication(gmx_domdec_t *dd,
             make_cell2at_index(cd, nzone, zone_cg_range[nzone], cgindex);
         }
         nzone += nzone;
-    }
+    } /* end for */
+
     dd->index_gl = index_gl;
     dd->cgindex  = cgindex;
 
@@ -8915,7 +9037,7 @@ static void dd_sort_state(gmx_domdec_t *dd, int ePBC,
     int               *cgindex;
     int                ncg_new, i, *ibuf, cgsize;
     rvec              *vbuf;
-
+    SHDEBUG(" Sorting \n");
     sort = dd->comm->sort;
 
     if (dd->ncg_home > sort->sort_nalloc)
@@ -8940,7 +9062,11 @@ static void dd_sort_state(gmx_domdec_t *dd, int ePBC,
     }
 
     /* We alloc with the old size, since cgindex is still old */
+#ifdef GMX_SHMEM
+    vec_rvec_check_alloc_shmem(&dd->comm->vbuf, dd->cgindex[dd->ncg_home]);
+#else
     vec_rvec_check_alloc(&dd->comm->vbuf, dd->cgindex[dd->ncg_home]);
+#endif
     vbuf = dd->comm->vbuf.v;
 
     if (dd->comm->bCGs)
@@ -9047,6 +9173,7 @@ static void dd_sort_state(gmx_domdec_t *dd, int ePBC,
         }
         fr->ns.grid->nr = dd->ncg_home;
     }
+    SHDEBUG(" End of Sorting \n");
 }
 
 static void add_dd_statistics(gmx_domdec_t *dd)
@@ -9399,11 +9526,13 @@ void dd_partition_system(FILE                *fplog,
     /* Check if we should sort the charge groups */
     if (comm->nstSortCG > 0)
     {
+    	SHDEBUG(" This process will sort the charges \n ");
         bSortCG = (bMasterState ||
                    (bRedist && (step % comm->nstSortCG == 0)));
     }
     else
     {
+    	SHDEBUG(" This process is NOT sorting the charges \n ");
         bSortCG = FALSE;
     }
 
@@ -9451,6 +9580,7 @@ void dd_partition_system(FILE                *fplog,
 
     if (bSortCG)
     {
+    	SHDEBUG(" This proc is entering the sorting \n");
         wallcycle_sub_start(wcycle, ewcsDD_GRID);
 
         /* Sort the state on charge group position.
@@ -9503,6 +9633,7 @@ void dd_partition_system(FILE                *fplog,
             ncells_new[ZZ] != ncells_old[ZZ])
         {
             bResortAll = TRUE;
+            SHDEBUG(" Resort All is true in this proc \n");
         }
 
         if (debug)
@@ -9512,11 +9643,16 @@ void dd_partition_system(FILE                *fplog,
         }
         dd_sort_state(dd, ir->ePBC, fr->cg_cm, fr, state_local,
                       bResortAll ? -1 : ncg_home_old);
+
         /* Rebuild all the indices */
         cg0 = 0;
         ga2la_clear(dd->ga2la);
 
         wallcycle_sub_stop(wcycle, ewcsDD_GRID);
+    }
+    else
+    {
+    	SHDEBUG(" This process will not sort at all");
     }
 
     wallcycle_sub_start(wcycle, ewcsDD_SETUPCOMM);
@@ -9595,10 +9731,14 @@ void dd_partition_system(FILE                *fplog,
      * or constraint communication.
      */
     state_local->natoms = comm->nat[ddnatNR-1];
+#ifdef GMX_SHMEM
+    dd_realloc_state_shmem(state_local, f, state_local->natoms);
+#else
     if (state_local->natoms > state_local->nalloc)
     {
         dd_realloc_state(state_local, f, state_local->natoms);
     }
+#endif
 
     if (fr->bF_NoVirSum)
     {

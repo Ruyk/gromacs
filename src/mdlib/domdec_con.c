@@ -673,17 +673,28 @@ static int setup_specat_communication(gmx_domdec_t             *dd,
             ns += spac->spas[d][1].nsend;
             nr += spac->spas[d][1].nrecv;
         }
+#ifdef GMX_SHMEM
+        shrenew(spac->vbuf, &spac->vbuf_nalloc, vbuf_fac*ns);
+#else
         if (vbuf_fac*ns > spac->vbuf_nalloc)
         {
             spac->vbuf_nalloc = over_alloc_dd(vbuf_fac*ns);
             srenew(spac->vbuf, spac->vbuf_nalloc);
         }
+#endif
+
+#ifdef GMX_SHMEM
+        if (vbuf_fac == 2)
+        {
+        	shrenew(spac->vbuf2, &spac->vbuf2_nalloc, vbuf_fac*nr);
+        }
+#else
         if (vbuf_fac == 2 && vbuf_fac*nr > spac->vbuf2_nalloc)
         {
             spac->vbuf2_nalloc = over_alloc_dd(vbuf_fac*nr);
             srenew(spac->vbuf2, spac->vbuf2_nalloc);
         }
-
+#endif
         /* Make a global to local index for the communication atoms */
         for (i = nat_tot_prev; i < nat_tot_specat; i++)
         {

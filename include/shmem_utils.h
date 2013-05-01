@@ -59,10 +59,16 @@
 
 #ifdef GMX_SHMEM
 
-// #define GMX_SHMEM_DEBUG
+#define GMX_SHMEM_DEBUG
 
 #include <shmem.h>
 #include <macros.h>
+
+#ifdef GMX_SHMEM_DEBUG
+#define SHDEBUG(...) { if(debug) { fprintf(debug,"SHMEM(ID:%d) (%s,%d)", _my_pe(), __FILE__, __LINE__); fprintf(debug,__VA_ARGS__); } }
+#else
+#define SHDEBUG(...) ;
+#endif
 
 #include "smalloc.h"
 #include "typedefs.h"

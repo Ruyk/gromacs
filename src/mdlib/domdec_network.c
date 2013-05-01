@@ -67,6 +67,15 @@ void dd_sendrecv_int(const gmx_domdec_t *dd,
     int        rank_s, rank_r;
     gmx_domdec_shmem_buf_t * shmem = dd->shmem;
 
+    if (!buf_s && n_s > 0)
+    {
+    	SHDEBUG(" Buf_s was null but sending %d elements \n", n_s);
+    }
+    if (!buf_r && n_r > 0)
+    {
+    	SHDEBUG(" Buf_r was null but receiving %d elements ", n_r);
+    }
+
     rank_s = dd->neighbor[ddimind][direction == dddirForward ? 0 : 1];
     rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
 
@@ -94,6 +103,7 @@ void dd_sendrecv_int(const gmx_domdec_t *dd,
     {
     	SHDEBUG(" Updating reception buffer from %d \n", rank_r);
     	memcpy(buf_r, shmem->int_buf, n_r * sizeof(int));
+    	SHDEBUG(" Copied %p into %p, size %ld, from %d \n", shmem->int_buf, buf_r, n_r*sizeof(int), rank_r);
     }
     shmem_set_done(shmem, rank_r);
     shmem_clear_post(shmem, _my_pe());
@@ -278,7 +288,7 @@ void dd_sendrecv2_rvec(const gmx_domdec_t *dd,
 
     SHDEBUG(" SendRecv2 (S1: %d,R1: %d) using SHMEM (n_s_fw %d, n_r_bw %d) \n",
     		rank_fw, rank_bw, n_s_fw, n_r_fw);
-    shrenew(shmem->rvec_buf, &(shmem->rvec_alloc), max(n_s_fw, n_s_bw) * sizeof(rvec));
+    // shrenew(shmem->rvec_buf, &(shmem->rvec_alloc), max(n_s_fw, n_s_bw) * sizeof(rvec));
 
     // shmem_barrier_all();
     shmem_lock(shmem, rank_fw);
@@ -287,14 +297,15 @@ void dd_sendrecv2_rvec(const gmx_domdec_t *dd,
     if (n_s_fw) {
     	// Put buf_is in rank_s
     	//               T       S     Len   Pe
-    	shmem_float_put((real *) shmem->rvec_buf, (real *) buf_s_fw, n_s_fw * DIM, rank_fw);
+    	// shmem_float_put((real *) shmem->rvec_buf, (real *) buf_s_fw, n_s_fw * DIM, rank_fw);
+    	shmem_float_put((real *) buf_r_fw, (real *) buf_s_fw, n_s_fw * DIM, rank_fw);
     }
     shmem_set_post(shmem, rank_fw);
 
     shmem_wait_post(shmem, _my_pe());
     if (n_r_fw) {
     	SHDEBUG(" Updating reception buffer \n");
-    	memcpy(buf_r_fw, shmem->rvec_buf, n_r_fw * sizeof(rvec));
+    	// memcpy(buf_r_fw, shmem->rvec_buf, n_r_fw * sizeof(rvec));
     };
     shmem_set_done(shmem, rank_bw);
     shmem_clear_post(shmem, _my_pe());
@@ -313,14 +324,15 @@ void dd_sendrecv2_rvec(const gmx_domdec_t *dd,
     {
         	// Put buf_is in rank_s
         	//               T       S     Len   Pe
-        	shmem_float_put((real *) shmem->rvec_buf, (real *) buf_s_bw, n_s_bw * DIM, rank_bw);
+        	// shmem_float_put((real *) shmem->rvec_buf, (real *) buf_s_bw, n_s_bw * DIM, rank_bw);
+        	shmem_float_put((real *) buf_r_bw, (real *) buf_s_bw, n_s_bw * DIM, rank_bw);
     }
     shmem_set_post(shmem, rank_bw);
 
     shmem_wait_post(shmem, _my_pe());
     if (n_r_bw) {
         	SHDEBUG(" Updating reception buffer \n");
-        	memcpy(buf_r_bw, shmem->rvec_buf, n_r_bw * sizeof(rvec));
+        	// memcpy(buf_r_bw, shmem->rvec_buf, n_r_bw * sizeof(rvec));
     }
     shmem_set_done(shmem, rank_fw);
     shmem_clear_post(shmem, _my_pe());
