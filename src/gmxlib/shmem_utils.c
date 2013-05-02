@@ -154,14 +154,14 @@ gmx_bool shmem_is_posted(gmx_domdec_shmem_buf_t * shmem, int pe)
 
 void shmem_lock(gmx_domdec_shmem_buf_t * shmem, int pe)
 {
-	SHDEBUG(" Waiting for lock on %d \n", pe);
+	// SHDEBUG(" Waiting for lock on %d \n", pe);
     shmem_set_lock(shmem->lock + pe);
-    SHDEBUG(" Acquired lock on %d \n", pe);
+    // SHDEBUG(" Acquired lock on %d \n", pe);
 }
 
 void shmem_unlock(gmx_domdec_shmem_buf_t * shmem, int pe)
 {
-	SHDEBUG(" Leaving lock on %d \n", pe);
+	// SHDEBUG(" Leaving lock on %d \n", pe);
 	shmem_clear_lock(shmem->lock + pe);
 }
 
@@ -197,7 +197,7 @@ int get_max_alloc(int local_value)
    {
 	   pSync[i] = _SHMEM_SYNC_VALUE;
    }
-   local_max= local_value;
+   local_max = local_value;
    shmem_barrier_all();
    shmem_int_max_to_all(&global_max, &local_max, 1, 0, 0, _num_pes(), pWrk, pSync);
    return global_max;
@@ -207,7 +207,9 @@ void * sh_renew_buf(void * buf, int * alloc, const int new_size, const int elem_
 {
 	void * p;
 	int global_max;
+	SHDEBUG(" Before get max alloc \n");
 	global_max = get_max_alloc(over_alloc_dd(new_size));
+	SHDEBUG(" After get max alloc \n");
 	if (global_max > (*alloc)) {
 		SHDEBUG(" Updating alloc (%d) to new global max (%d) with elem size %d \n", (*alloc), global_max, elem_size);
 		// BUGGY: sh_srenew(buf, (*alloc));
