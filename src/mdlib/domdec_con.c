@@ -324,9 +324,11 @@ static void dd_move_x_specat(gmx_domdec_t *dd, gmx_domdec_specat_comm_t *spac,
             nr1  = spas[1].nrecv;
             if (nvec == 1)
             {
+            	SHDEBUG(" BEFORE Sendrecv X0 %p \n", x0);
                 dd_sendrecv2_rvec(dd, d,
                                   spac->vbuf+ns0, ns1, x0+n, nr1,
                                   spac->vbuf, ns0, x0+n+nr1, nr0);
+                SHDEBUG(" DONE Sendrecv X0 %p \n", x0);
             }
             else
             {

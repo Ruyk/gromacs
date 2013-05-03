@@ -624,6 +624,56 @@ void init_state(t_state *state, int natoms, int ngtc, int nnhpres, int nhchainle
     state->cg_gl_nalloc    = 0;
 }
 
+#ifdef GMX_SHMEM
+void init_state_shmem(t_state *state, int natoms, int ngtc, int nnhpres, int nhchainlength, int nlambda)
+{
+    int i;
+
+    state->natoms = natoms;
+    state->nrng   = 0;
+    state->flags  = 0;
+    state->lambda = 0;
+    snew(state->lambda, efptNR);
+    for (i = 0; i < efptNR; i++)
+    {
+        state->lambda[i] = 0;
+    }
+    state->veta   = 0;
+    clear_mat(state->box);
+    clear_mat(state->box_rel);
+    clear_mat(state->boxv);
+    clear_mat(state->pres_prev);
+    clear_mat(state->svir_prev);
+    clear_mat(state->fvir_prev);
+    init_gtc_state(state, ngtc, nnhpres, nhchainlength);
+    // state->nalloc = state->natoms;
+    state->nalloc = get_max_alloc(state->natoms);
+    if (state->nalloc > 0)
+    {
+        sh_snew(state->x, state->nalloc);
+        sh_snew(state->v, state->nalloc);
+    }
+    else
+    {
+        state->x = NULL;
+        state->v = NULL;
+    }
+    state->sd_X = NULL;
+    state->cg_p = NULL;
+
+    zero_ekinstate(&state->ekinstate);
+
+    init_energyhistory(&state->enerhist);
+
+    init_df_history(&state->dfhist, nlambda, 0);
+
+    state->ddp_count       = 0;
+    state->ddp_count_cg_gl = 0;
+    state->cg_gl           = NULL;
+    state->cg_gl_nalloc    = 0;
+} /* init_state_shmem */
+#endif
+
 void done_state(t_state *state)
 {
     if (state->nosehoover_xi)
@@ -653,6 +703,38 @@ void done_state(t_state *state)
     }
     state->cg_gl_nalloc = 0;
 }
+
+#ifdef GMX_SHMEM
+void done_state_shmem(t_state *state)
+{
+    if (state->nosehoover_xi)
+    {
+        sfree(state->nosehoover_xi);
+    }
+    if (state->x)
+    {
+        sh_sfree(state->x);
+    }
+    if (state->v)
+    {
+        sh_sfree(state->v);
+    }
+    if (state->sd_X)
+    {
+        sh_sfree(state->sd_X);
+    }
+    if (state->cg_p)
+    {
+        sh_sfree(state->cg_p);
+    }
+    state->nalloc = 0;
+    if (state->cg_gl)
+    {
+        sfree(state->cg_gl);
+    }
+    state->cg_gl_nalloc = 0;
+} /* done_state_shmem */
+#endif
 
 static void do_box_rel(t_inputrec *ir, matrix box_rel, matrix b, gmx_bool bInit)
 {

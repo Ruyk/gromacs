@@ -2017,8 +2017,11 @@ void do_constrain_first(FILE *fplog, gmx_constr_t constr,
     real            dt = ir->delta_t;
     real            dvdl_dum;
     rvec           *savex;
-
+#ifdef GMX_SHMEM
+    sh_snew(savex, state->natoms);
+#else
     snew(savex, state->natoms);
+#endif
 
     start = md->start;
     end   = md->homenr + start;
@@ -2099,7 +2102,11 @@ void do_constrain_first(FILE *fplog, gmx_constr_t constr,
             }
         }
     }
+#ifdef GMX_SHMEM
+    sh_sfree(savex);
+#else
     sfree(savex);
+#endif
 }
 
 void calc_enervirdiff(FILE *fplog, int eDispCorr, t_forcerec *fr)

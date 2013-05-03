@@ -1714,16 +1714,16 @@ static void dd_realloc_state_shmem(t_state *state, rvec **f, int nalloc)
             switch (est)
             {
                 case estX:
-                    srenew(state->x, state->nalloc);
+                    sh_srenew(state->x, state->nalloc);
                     break;
                 case estV:
-                    srenew(state->v, state->nalloc);
+                    sh_srenew(state->v, state->nalloc);
                     break;
                 case estSDX:
-                    srenew(state->sd_X, state->nalloc);
+                    sh_srenew(state->sd_X, state->nalloc);
                     break;
                 case estCGP:
-                    srenew(state->cg_p, state->nalloc);
+                    sh_srenew(state->cg_p, state->nalloc);
                     break;
                 case estLD_RNG:
                 case estLD_RNGI:
@@ -9873,7 +9873,7 @@ void dd_partition_system(FILE                *fplog,
         write_dd_pdb("dd_dump", step, "dump", top_global, cr,
                      -1, state_local->x, state_local->box);
     }
-
+    SHDEBUG(" AFTER PDB DD_MOVE_X_SITES \n");
     /* Store the partitioning step */
     comm->partition_step = step;
 

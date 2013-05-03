@@ -203,6 +203,7 @@ int get_max_alloc(int local_value)
    return global_max;
 }
 
+
 void * sh_renew_buf(void * buf, int * alloc, const int new_size, const int elem_size)
 {
 	void * p;

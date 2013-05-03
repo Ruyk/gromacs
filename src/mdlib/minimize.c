@@ -363,8 +363,15 @@ void init_em(FILE *fplog, const char *title,
 
         /* Just copy the state */
         ems->s = *state_global;
+#ifdef GMX_SHMEM
+        SHDEBUG(" Not using DD \n");
+        sh_snew(ems->s.x, ems->s.nalloc);
+        sh_snew(ems->f, ems->s.nalloc);
+#else
         snew(ems->s.x, ems->s.nalloc);
         snew(ems->f, ems->s.nalloc);
+#endif
+
         for (i = 0; i < state_global->natoms; i++)
         {
             copy_rvec(state_global->x[i], ems->s.x[i]);
@@ -563,7 +570,23 @@ static void do_em_step(t_commrec *cr, t_inputrec *ir, t_mdatoms *md,
     }
 
     s2->flags = s1->flags;
+#ifdef GMX_SHMEM
 
+    /* The size of the state->nalloc is symmetric across all PEs
+     * (except for state_global that only exists on the MASTER
+     */
+    if (s2->nalloc != s1->nalloc)
+       {
+           s2->nalloc = s1->nalloc;
+           sh_srenew(s2->x, s1->nalloc);
+           sh_srenew(ems2->f,  s1->nalloc);
+           if (s2->flags & (1<<estCGP))
+           {
+               sh_srenew(s2->cg_p,  s1->nalloc);
+           }
+       }
+
+#else
     if (s2->nalloc != s1->nalloc)
     {
         s2->nalloc = s1->nalloc;
@@ -574,7 +597,7 @@ static void do_em_step(t_commrec *cr, t_inputrec *ir, t_mdatoms *md,
             srenew(s2->cg_p,  s1->nalloc);
         }
     }
-
+#endif
     s2->natoms = s1->natoms;
     copy_mat(s1->box, s2->box);
     /* Copy free energy state */
