@@ -295,7 +295,7 @@ void _sh_srealloc(const char *name, const char *file, int line, T * &ptr, size_t
 #define sh_sfree(ptr) save_shfree(#ptr, __FILE__, __LINE__, (ptr))
 
 #define sh_srenew(ptr, nelem) { (ptr) = save_shrealloc(#ptr, __FILE__, __LINE__, \
-                                                (ptr), (nelem), sizeof(*(ptr))); printf("P outside: %p \n", (ptr)); }
+                                                (ptr), (nelem), sizeof(*(ptr))); }
 
 
 
