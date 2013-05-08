@@ -470,7 +470,6 @@ void dd_bcastc(gmx_domdec_t *dd, int nbytes, void *src, void *dest)
 	{
 		pSync[i] = _SHMEM_SYNC_VALUE;
 	}
-	// Suspicious barrier
 	shmem_barrier_all();
 	/* shmem_broadcast expects a number of elements,
 	 *  and assumes that each element of the array
@@ -479,16 +478,15 @@ void dd_bcastc(gmx_domdec_t *dd, int nbytes, void *src, void *dest)
 	 * so we have to find the nearest multiple to create the
 	 * temporary buffer.
 	 */
-	size = round_to_next_multiple(nbytes, sizeof(void *));
-	shrenew(shmem->byte_buf, &(shmem->byte_alloc), size);
-	buf = shmem->byte_buf;
+	// size = round_to_next_multiple(nbytes, sizeof(void *));
+	shrenew(shmem->int_buf, &(shmem->int_alloc), nbytes);
+	buf = shmem->int_buf;
 	if (DDMASTERRANK(dd) == _my_pe())
 	{
 		memcpy(buf, src, nbytes);
-		memset(buf + nbytes, 0, size - nbytes);
 	}
 	SHDEBUG("  buf ptr %p , masterrank %d  \n", buf, DDMASTERRANK(dd));
-	shmem_broadcast(buf, buf, size, DDMASTERRANK(dd), 0, 0, _num_pes(), pSync);
+	shmem_broadcast(buf, buf, nbytes/sizeof(int), DDMASTERRANK(dd), 0, 0, _num_pes(), pSync);
 	memcpy(dest, buf, nbytes);
 	SHDEBUG(" End of routine \n");
 #else

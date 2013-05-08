@@ -363,7 +363,7 @@ void init_em(FILE *fplog, const char *title,
 
         /* Just copy the state */
         ems->s = *state_global;
-#ifdef GMX_SHMEM
+#ifdef GMX_SHMEM_XXX
         SHDEBUG(" Not using DD \n");
         sh_snew(ems->s.x, ems->s.nalloc);
         sh_snew(ems->f, ems->s.nalloc);

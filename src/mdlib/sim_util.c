@@ -2017,7 +2017,7 @@ void do_constrain_first(FILE *fplog, gmx_constr_t constr,
     real            dt = ir->delta_t;
     real            dvdl_dum;
     rvec           *savex;
-#ifdef GMX_SHMEM
+#ifdef GMX_SHMEM_XXX
     sh_snew(savex, state->natoms);
 #else
     snew(savex, state->natoms);
@@ -2102,7 +2102,7 @@ void do_constrain_first(FILE *fplog, gmx_constr_t constr,
             }
         }
     }
-#ifdef GMX_SHMEM
+#ifdef GMX_SHMEM_XXX
     sh_sfree(savex);
 #else
     sfree(savex);

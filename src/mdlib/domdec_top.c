@@ -1917,7 +1917,11 @@ void dd_init_local_state(gmx_domdec_t *dd,
     }
     dd_bcast(dd, NITEM_DD_INIT_LOCAL_STATE*sizeof(int), buf);
 
+#ifdef GMX_SHMEM
     init_state_shmem(state_local, 0, buf[1], buf[2], buf[3], buf[4]);
+#else
+    init_state(state_local, 0, buf[1], buf[2], buf[3], buf[4]);
+#endif
     state_local->flags = buf[0];
 
     /* With Langevin Dynamics we need to make proper storage space

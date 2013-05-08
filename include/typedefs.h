@@ -151,6 +151,10 @@ GMX_LIBGMX_EXPORT
 void init_gtc_state(t_state *state, int ngtc, int nnhpres, int nhchainlength);
 GMX_LIBGMX_EXPORT
 void init_state(t_state *state, int natoms, int ngtc, int nnhpres, int nhchainlength, int nlambda);
+#ifdef GMX_SHMEM
+GMX_LIBGMX_EXPORT
+void init_state_shmem(t_state *state, int natoms, int ngtc, int nnhpres, int nhchainlength, int nlambda);
+#endif
 GMX_LIBGMX_EXPORT
 void init_df_history(df_history_t *dfhist, int nlambda, real wl_delta);
 GMX_LIBGMX_EXPORT

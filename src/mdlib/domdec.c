@@ -1695,16 +1695,16 @@ static void dd_realloc_state(t_state *state, rvec **f, int nalloc)
 }
 
 #ifdef GMX_SHMEM
+
 static void dd_realloc_state_shmem(t_state *state, rvec **f, int nalloc)
 {
     int est;
 
     if (debug)
     {
-        fprintf(debug, "Reallocating state SHMEM: currently %d, required %d, allocating %d\n", state->nalloc, nalloc, over_alloc_dd(nalloc));
+        fprintf(debug, "Reallocating state: currently %d, required %d, allocating %d\n", state->nalloc, nalloc, over_alloc_dd(nalloc));
     }
 
-    // state->nalloc = over_alloc_dd(nalloc);
     state->nalloc = get_max_alloc(over_alloc_dd(nalloc));
 
     for (est = 0; est < estNR; est++)
@@ -1714,7 +1714,7 @@ static void dd_realloc_state_shmem(t_state *state, rvec **f, int nalloc)
             switch (est)
             {
                 case estX:
-                    sh_srenew(state->x, state->nalloc);
+                	sh_srenew(state->x, state->nalloc);
                     break;
                 case estV:
                     sh_srenew(state->v, state->nalloc);
@@ -1741,10 +1741,10 @@ static void dd_realloc_state_shmem(t_state *state, rvec **f, int nalloc)
 
     if (f != NULL)
     {
-        sh_srenew(*f, state->nalloc);
-
+		sh_srenew(*f, state->nalloc);
     }
 }
+
 #endif
 
 static void dd_check_alloc_ncg(t_forcerec *fr, t_state *state, rvec **f,
@@ -1939,7 +1939,7 @@ static void dd_distribute_state(gmx_domdec_t *dd, t_block *cgs,
     dd_bcast(dd, ((state_local->nnhpres*nh)*sizeof(double)), state_local->nhpres_vxi);
 
 #ifdef GMX_SHMEM
-     dd_realloc_state_shmem(state_local, f, dd->nat_home);
+        dd_realloc_state_shmem(state_local, f, dd->nat_home);
 #else
     if (dd->nat_home > state_local->nalloc)
     {
@@ -4939,7 +4939,7 @@ static void dd_redistribute_cg(FILE *fplog, gmx_large_int_t step,
 
             nvs = ncg[cdd] + nat[cdd]*nvec;
             i   = rbuf[0]  + rbuf[1] *nvec;
-#ifdef GMX_SHMEM
+#ifdef GMX_SHMEM_XXX
             vec_rvec_check_alloc_shmem(&comm->vbuf, nvr+i);
 #else
             vec_rvec_check_alloc(&comm->vbuf, nvr+i);
@@ -4971,6 +4971,7 @@ static void dd_redistribute_cg(FILE *fplog, gmx_large_int_t step,
         	SHDEBUG(" After dd_check_alloc_ncg , home_pos %d tmp %d \n", home_pos_at, tmp);
         }
 #endif
+        SHDEBUG(" ncg_recv is %d \n", ncg_recv);
         /* Process the received charge groups */
         buf_pos = 0;
         for (cg = 0; cg < ncg_recv; cg++)
@@ -5083,10 +5084,25 @@ static void dd_redistribute_cg(FILE *fplog, gmx_large_int_t step,
                 /* Set the global charge group index and size */
                 dd->index_gl[home_pos_cg]  = comm->buf_int[cg*DD_CGIBS];
                 dd->cgindex[home_pos_cg+1] = dd->cgindex[home_pos_cg] + nrcg;
-#ifndef GMX_SHMEM
+
                 /* Copy the state from the buffer */
-                dd_check_alloc_ncg(fr, state, f, home_pos_cg+1);
-#endif
+                // dd_check_alloc_ncg(fr, state, f, home_pos_cg+1);
+                /**** TODO: Move to another function ***/
+                if (home_pos_cg+1 > fr->cg_nalloc)
+                    {
+                        if (debug)
+                        {
+                            fprintf(debug, "Reallocating forcerec: currently %d, required %d, allocating %d\n", fr->cg_nalloc, home_pos_cg+1, over_alloc_dd(home_pos_cg+1));
+                        }
+                        fr->cg_nalloc = over_alloc_dd(home_pos_cg+1);
+                        srenew(fr->cginfo, fr->cg_nalloc);
+                        if (fr->cutoff_scheme == ecutsGROUP)
+                        {
+                            srenew(fr->cg_cm, fr->cg_nalloc);
+                        }
+                    }
+                /*** end of new function */
+
                 if (fr->cutoff_scheme == ecutsGROUP)
                 {
                     cg_cm = fr->cg_cm;
@@ -5104,12 +5120,12 @@ static void dd_redistribute_cg(FILE *fplog, gmx_large_int_t step,
 
 
 
-#ifndef GMX_SHMEM
+// #ifndef GMX_SHMEM
                 if (home_pos_at+nrcg > state->nalloc)
                 {
-                    dd_realloc_state(state, f, home_pos_at+nrcg);
+                    dd_realloc_state_shmem(state, f, home_pos_at+nrcg);
                 }
-#endif
+// #endif
                 for (i = 0; i < nrcg; i++)
                 {
                     copy_rvec(comm->vbuf.v[buf_pos++],
@@ -8352,7 +8368,7 @@ static void setup_dd_communication(gmx_domdec_t *dd,
                         srenew(comm->buf_int, comm->nalloc_int);
                     }
 #endif
-#ifdef GMX_SHMEM
+#ifdef GMX_SHMEM_XXX
                     vec_rvec_check_alloc_shmem(&comm->vbuf, ns1);
 #else
                     /* TODO: This should use the vec_rvec_check_alloc routine
@@ -8393,7 +8409,7 @@ static void setup_dd_communication(gmx_domdec_t *dd,
             /* The rvec buffer is also required for atom buffers of size nsend
              * in dd_move_x and dd_move_f.
              */
-#ifdef GMX_SHMEM
+#ifdef GMX_SHMEM_XXX
             vec_rvec_check_alloc_shmem(&comm->vbuf, ind->nsend[nzone+1]);
 #else
             vec_rvec_check_alloc(&comm->vbuf, ind->nsend[nzone+1]);
@@ -8414,7 +8430,7 @@ static void setup_dd_communication(gmx_domdec_t *dd,
                 if (!cd->bInPlace)
                 {
                     /* The int buffer is only required here for the cg indices */
-#ifdef GMX_SHMEM
+#ifdef GMX_SHMEM_XXX
                 	shrenew(comm->buf_int2, &comm->nalloc_int2, ind->nrecv[nzone]);
 #else
                     if (ind->nrecv[nzone] > comm->nalloc_int2)
@@ -8427,7 +8443,7 @@ static void setup_dd_communication(gmx_domdec_t *dd,
                      * of size nrecv in dd_move_x and dd_move_f.
                      */
                     i = max(cd->ind[0].nrecv[nzone+1], ind->nrecv[nzone+1]);
-#ifdef GMX_SHMEM
+#ifdef GMX_SHMEM_XXX
                     vec_rvec_check_alloc_shmem(&comm->vbuf2, i);
 #else
                     vec_rvec_check_alloc(&comm->vbuf2, i);
@@ -9083,7 +9099,7 @@ static void dd_sort_state(gmx_domdec_t *dd, int ePBC,
     }
     SHDEBUG(" BEFORE vec_rvec_check_alloc_shmem \n");
     /* We alloc with the old size, since cgindex is still old */
-#ifdef GMX_SHMEM
+#ifdef GMX_SHMEM_XXX
     vec_rvec_check_alloc_shmem(&dd->comm->vbuf, dd->cgindex[dd->ncg_home]);
 #else
     vec_rvec_check_alloc(&dd->comm->vbuf, dd->cgindex[dd->ncg_home]);
@@ -9638,6 +9654,7 @@ void dd_partition_system(FILE                *fplog,
                 nbnxn_get_ncells(fr->nbv->nbs, &ncells_new[XX], &ncells_new[YY]);
                 break;
             case ecutsGROUP:
+            	/**** take a closer look TODO*/
                 fill_grid(fplog, &comm->zones, fr->ns.grid, dd->ncg_home,
                           0, dd->ncg_home, fr->cg_cm);
 
