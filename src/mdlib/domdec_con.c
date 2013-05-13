@@ -130,9 +130,16 @@ static void dd_move_f_specat(gmx_domdec_t *dd, gmx_domdec_specat_comm_t *spac,
             n   -= n1 + n0;
             vbuf = spac->vbuf;
             /* Send and receive the coordinates */
+#ifdef GMX_SHMEM
+            dd_sendrecv2_rvec_off(dd, d,
+                               f, n+n1, n0, vbuf, 0, spas[0].nsend,
+                               f, n, n1, vbuf, spas[0].nsend, spas[1].nsend
+                             );
+#else
             dd_sendrecv2_rvec(dd, d,
                               f+n+n1, n0, vbuf, spas[0].nsend,
                               f+n, n1, vbuf+spas[0].nsend, spas[1].nsend);
+#endif
             for (dir = 0; dir < 2; dir++)
             {
                 bPBC   = ((dir == 0 && dd->ci[dim] == 0) ||
@@ -324,19 +331,29 @@ static void dd_move_x_specat(gmx_domdec_t *dd, gmx_domdec_specat_comm_t *spac,
             nr1  = spas[1].nrecv;
             if (nvec == 1)
             {
-            	SHDEBUG(" BEFORE Sendrecv X0 %p \n", x0);
+#ifdef GMX_SHMEM
+            	dd_sendrecv2_rvec_off(dd, d,
+            	                  spac->vbuf, ns0, ns1, x0, n, nr1,
+            	                  spac->vbuf, 0 ,  ns0, x0, n+nr1, nr0);
+#else
                 dd_sendrecv2_rvec(dd, d,
                                   spac->vbuf+ns0, ns1, x0+n, nr1,
                                   spac->vbuf, ns0, x0+n+nr1, nr0);
-                SHDEBUG(" DONE Sendrecv X0 %p \n", x0);
+#endif
             }
             else
             {
                 /* Communicate both vectors in one buffer */
                 rbuf = spac->vbuf2;
+#ifdef GMX_SHMEM
+                dd_sendrecv2_rvec_off(dd, d,
+                                  spac->vbuf, 2*ns0, 2*ns1, rbuf, 0, 2*nr1,
+                                  spac->vbuf, 0, 2*ns0, rbuf, 2*nr1, 2*nr0);
+#else
                 dd_sendrecv2_rvec(dd, d,
                                   spac->vbuf+2*ns0, 2*ns1, rbuf, 2*nr1,
                                   spac->vbuf, 2*ns0, rbuf+2*nr1, 2*nr0);
+#endif
                 /* Split the buffer into the two vectors */
                 nn = n;
                 for (dir = 1; dir >= 0; dir--)

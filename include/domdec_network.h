@@ -92,6 +92,14 @@ dd_sendrecv2_rvec(const gmx_domdec_t *dd,
                   rvec *buf_s_bw, int n_s_bw,
                   rvec *buf_r_bw, int n_r_bw);
 
+#ifdef GMX_SHMEM
+void dd_sendrecv2_rvec_off(const gmx_domdec_t *dd,
+                       int ddimind,
+                       rvec *buf_s_fw, int off_s_fw, int n_s_fw,
+                       rvec *buf_r_fw, int off_r_fw, int n_r_fw,
+                       rvec *buf_s_bw, int off_s_bw, int n_s_bw,
+                       rvec *buf_r_bw, int off_r_bw, int n_r_bw);
+#endif
 
 /* The functions below perform the same operations as the MPI functions
  * with the same name appendices, but over the domain decomposition
