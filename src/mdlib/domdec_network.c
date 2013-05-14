@@ -80,7 +80,7 @@ void dd_sendrecv_int(const gmx_domdec_t *dd,
     rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
 
     SHDEBUG(" SendRecv (S: %d,R: %d) using SHMEM (n_s %d, n_r %d) \n", rank_s, rank_r, n_s, n_r);
-    shrenew(shmem->int_buf, &(shmem->int_alloc), n_s);
+    shrenew(shmem, shmem->int_buf, &(shmem->int_alloc), n_s);
 
     // shmem_barrier_all();
     shmem_lock(shmem, rank_s);
@@ -154,7 +154,7 @@ void dd_sendrecv_real(const gmx_domdec_t *dd,
     rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
 
     SHDEBUG(" SendRecv (S: %d,R: %d) using SHMEM (n_s %d, n_r %d) \n", rank_s, rank_r, n_s, n_r);
-    shrenew(shmem->real_buf, &(shmem->real_alloc), n_s);
+    shrenew(shmem, shmem->real_buf, &(shmem->real_alloc), n_s);
 
     // shmem_barrier_all();
     shmem_lock(shmem, rank_s);
@@ -219,7 +219,7 @@ void dd_sendrecv_rvec(const gmx_domdec_t *dd,
     rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
 
     SHDEBUG(" SendRecv RVEC (S: %d,R: %d) using SHMEM (n_s %d, n_r %d) (size rvec: %ld) \n", rank_s, rank_r, n_s, n_r, sizeof(rvec));
-    shrenew(shmem->rvec_buf, &(shmem->rvec_alloc), n_s * sizeof(rvec));
+    shrenew(shmem, shmem->rvec_buf, &(shmem->rvec_alloc), n_s * sizeof(rvec));
 
 	// shmem_barrier_all();
     shmem_lock(shmem, rank_s);
@@ -360,7 +360,7 @@ void dd_sendrecv2_rvec(const gmx_domdec_t *dd,
 
     SHDEBUG(" SendRecv2 (S1: %d,R1: %d) using SHMEM (n_s_fw %d, n_r_bw %d) \n",
     		rank_fw, rank_bw, n_s_fw, n_r_fw);
-    shrenew(shmem->rvec_buf, &(shmem->rvec_alloc), max(n_s_fw, n_s_bw) * sizeof(rvec));
+    shrenew(shmem, shmem->rvec_buf, &(shmem->rvec_alloc), max(n_s_fw, n_s_bw) * sizeof(rvec));
 
     // shmem_barrier_all();
     shmem_lock(shmem, rank_fw);
@@ -502,7 +502,7 @@ void dd_bcast(gmx_domdec_t *dd, int nbytes, void *data)
 	 * temporary buffer.
 	 */
 	size = round_to_next_multiple(nbytes, sizeof(void *));
-	shrenew(shmem->byte_buf, &(shmem->byte_alloc), size);
+	shrenew(shmem, shmem->byte_buf, &(shmem->byte_alloc), size);
 	buf = shmem->byte_buf;
 	if (DDMASTERRANK(dd) == _my_pe())
 	{
@@ -551,7 +551,7 @@ void dd_bcastc(gmx_domdec_t *dd, int nbytes, void *src, void *dest)
 	 * temporary buffer.
 	 */
 	// size = round_to_next_multiple(nbytes, sizeof(void *));
-	shrenew(shmem->int_buf, &(shmem->int_alloc), nbytes);
+	shrenew(shmem, shmem->int_buf, &(shmem->int_alloc), nbytes);
 	buf = shmem->int_buf;
 	if (DDMASTERRANK(dd) == _my_pe())
 	{
@@ -586,7 +586,7 @@ void dd_scatter(gmx_domdec_t *dd, int nbytes, void *src, void *dest)
 	int i;
 	gmx_domdec_shmem_buf_t * shmem = dd->shmem;
 
-	shrenew(shmem->byte_buf, &(shmem->byte_alloc), nbytes);
+	shrenew(shmem, shmem->byte_buf, &(shmem->byte_alloc), nbytes);
 
     SHDEBUG(" Scatter %p (nbytes %d) \n", shmem->byte_buf, nbytes);
 
@@ -622,7 +622,7 @@ void dd_gather(gmx_domdec_t *dd, int nbytes, void *src, void *dest)
 	int size;
 
     size = _num_pes() * nbytes;
-	shrenew(shmem->byte_buf, &(shmem->byte_alloc), size);
+	shrenew(shmem, shmem->byte_buf, &(shmem->byte_alloc), size);
 
     shmem_putmem(shmem->byte_buf + (_my_pe() * nbytes), src, nbytes, DDMASTERRANK(dd));
 	shmem_barrier_all();
@@ -664,7 +664,7 @@ void dd_scatterv(gmx_domdec_t *dd,
     }
 
 	SHDEBUG(" ScatterV %p (size to allocate %d) \n", shmem->byte_buf, max_count);
-    shrenew(shmem->byte_buf, &(shmem->byte_alloc), max_count);
+    shrenew(shmem, shmem->byte_buf, &(shmem->byte_alloc), max_count);
 
 	if (_my_pe() == DDMASTERRANK(dd))
 	{
@@ -739,7 +739,7 @@ void dd_gatherv(gmx_domdec_t *dd,
 		 *  the number of process involved, as we use the shmem->byte_buf to communicate
 		 *  the displacement arrays
 		 */
-	    shrenew(shmem->byte_buf, &(shmem->byte_alloc), max(max_count, _num_pes() * sizeof(int)));
+	    shrenew(shmem, shmem->byte_buf, &(shmem->byte_alloc), max(max_count, _num_pes() * sizeof(int)));
         if (_my_pe() == DDMASTERRANK(dd))
         {
         	memcpy(shmem->byte_buf, disps, npes * sizeof(int));

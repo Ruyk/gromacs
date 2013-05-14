@@ -647,7 +647,7 @@ void init_state_shmem(t_state *state, int natoms, int ngtc, int nnhpres, int nhc
     clear_mat(state->fvir_prev);
     init_gtc_state(state, ngtc, nnhpres, nhchainlength);
     // state->nalloc = state->natoms;
-    state->nalloc = get_max_alloc(state->natoms);
+    state->nalloc = get_max_alloc_shmem(state->natoms);
     if (state->nalloc > 0)
     {
         sh_snew(state->x, state->nalloc);

@@ -60,6 +60,9 @@
 
 void init_shmem_buf(gmx_domdec_shmem_buf_t * shmem)
 {
+	/* static int pWrk[2>_SHMEM_REDUCE_MIN_WRKDATA_SIZE?2:_SHMEM_REDUCE_MIN_WRKDATA_SIZE];
+	static long pSync[_SHMEM_REDUCE_SYNC_SIZE]; */
+
 	if (!shmem)
 			gmx_fatal(FARGS, "Cannot initialise an empty shmem structure");
     shmem->int_alloc  = 0;
@@ -68,6 +71,12 @@ void init_shmem_buf(gmx_domdec_shmem_buf_t * shmem)
     shmem->int_buf  = NULL;
     shmem->real_buf = NULL;
     shmem->rvec_buf = NULL;
+    /* Init max_alloc pWrk and pSync arrays */
+    sh_snew(shmem->max_alloc_pWrk1, 2>_SHMEM_REDUCE_MIN_WRKDATA_SIZE?2:_SHMEM_REDUCE_MIN_WRKDATA_SIZE);
+    sh_snew(shmem->max_alloc_pWrk2, 2>_SHMEM_REDUCE_MIN_WRKDATA_SIZE?2:_SHMEM_REDUCE_MIN_WRKDATA_SIZE);
+    sh_snew(shmem->max_alloc_pSync1, _SHMEM_REDUCE_SYNC_SIZE);
+    sh_snew(shmem->max_alloc_pSync2, _SHMEM_REDUCE_SYNC_SIZE);
+
     /* Init p2p sync */
     sh_snew(shmem->post_events, _num_pes());
     shmem_clear_event(shmem->post_events + _my_pe());
@@ -96,6 +105,11 @@ void done_shmem_buf(gmx_domdec_shmem_buf_t * shmem)
 	sh_sfree(shmem->post_events);
 	sh_sfree(shmem->done_events);
 	sh_sfree(shmem->lock);
+
+	sh_sfree(shmem->max_alloc_pWrk1);
+	sh_sfree(shmem->max_alloc_pWrk2);
+	sh_sfree(shmem->max_alloc_pSync1);
+	sh_sfree(shmem->max_alloc_pSync2);
 }
 
 
@@ -186,7 +200,7 @@ int round_to_next_multiple(int nbytes, int type_size)
     return size;
 }
 
-int get_max_alloc(int local_value)
+int get_max_alloc_shmem(int local_value)
 {
    static int global_max = 0;
    static int local_max;
@@ -203,13 +217,37 @@ int get_max_alloc(int local_value)
    return global_max;
 }
 
+int get_max_alloc_shmem_dd(gmx_domdec_shmem_buf_t * shmem, int local_value)
+{
+	static int global_max = 0;
+	static int call = 0;
+	static int local_max = 0;
+	int * pWrk;
+	long * pSync;
 
-void * sh_renew_buf(void * buf, int * alloc, const int new_size, const int elem_size)
+	if (call%2)
+	{
+		pWrk = shmem->max_alloc_pWrk1;
+		pSync = shmem->max_alloc_pSync1;
+	}
+	else
+	{
+		pWrk = shmem->max_alloc_pWrk2;
+		pSync = shmem->max_alloc_pSync2;
+	}
+	local_max = local_value;
+	shmem_int_max_to_all(&global_max, &local_max, 1, 0, 0, _num_pes(), pWrk, pSync);
+	call++;
+	return global_max;
+}
+
+
+void * sh_renew_buf(gmx_domdec_shmem_buf_t * shmem, void * buf, int * alloc, const int new_size, const int elem_size)
 {
 	void * p;
 	int global_max;
 	SHDEBUG(" Before get max alloc \n");
-	global_max = get_max_alloc(over_alloc_dd(new_size));
+	global_max = get_max_alloc_shmem_dd(shmem, over_alloc_dd(new_size));
 	SHDEBUG(" After get max alloc \n");
 	if (global_max > (*alloc)) {
 		SHDEBUG(" Updating alloc (%d) to new global max (%d) with elem size %d \n", (*alloc), global_max, elem_size);

@@ -552,9 +552,9 @@ static void vec_rvec_init(vec_rvec_t *v)
 
 
 #ifdef GMX_SHMEM
-static void vec_rvec_check_alloc_shmem(vec_rvec_t *v, int n)
+static void vec_rvec_check_alloc_shmem(gmx_domdec_t *dd, vec_rvec_t *v, int n)
 {
-	shrenew(v->v, &(v->nalloc), n);
+	shrenew(dd->shmem, v->v, &(v->nalloc), n);
 }
 #endif /* GMX_SHMEM */
 
@@ -1705,7 +1705,7 @@ static void dd_realloc_state_shmem(t_state *state, rvec **f, int nalloc)
         fprintf(debug, "Reallocating state: currently %d, required %d, allocating %d\n", state->nalloc, nalloc, over_alloc_dd(nalloc));
     }
 
-    state->nalloc = get_max_alloc(over_alloc_dd(nalloc));
+    state->nalloc = get_max_alloc_shmem(over_alloc_dd(nalloc));
 
     for (est = 0; est < estNR; est++)
     {
@@ -4940,7 +4940,7 @@ static void dd_redistribute_cg(FILE *fplog, gmx_large_int_t step,
             nvs = ncg[cdd] + nat[cdd]*nvec;
             i   = rbuf[0]  + rbuf[1] *nvec;
 #ifdef GMX_SHMEM_XXX
-            vec_rvec_check_alloc_shmem(&comm->vbuf, nvr+i);
+            vec_rvec_check_alloc_shmem(dd, &comm->vbuf, nvr+i);
 #else
             vec_rvec_check_alloc(&comm->vbuf, nvr+i);
 #endif
@@ -4963,7 +4963,7 @@ static void dd_redistribute_cg(FILE *fplog, gmx_large_int_t step,
         	{
         		tmp += (comm->buf_int[cg*DD_CGIBS+1] & DD_FLAG_NRCG);
         	}
-        	SHDEBUG(" Will realloc state with home_post_at+tmp %d (h_p_a %d, tmp %d) \n", home_pos_at+flag, home_pos_at, tmp);
+        	SHDEBUG(" Will realloc state with home_post_at+tmp %d (h_p_a %d, tmp %d) \n", home_pos_at, home_pos_at, tmp);
         	dd_realloc_state_shmem(state, f, home_pos_at+tmp);
         	SHDEBUG(" Successfully reallocated state with home_pos_at+tmp %d (h_p_a %d, tmp %d) \n", home_pos_at+tmp, home_pos_at, tmp);
         	/* Copy the state from the buffer */
@@ -8351,7 +8351,7 @@ static void setup_dd_communication(gmx_domdec_t *dd,
 
                     ns1 = nsend + dth->nsend_zone;
 #ifdef GMX_SHMEM_XXX
-                    shrenew(ind->index, &ind->nalloc, ns1);
+                    shrenew(dd->shmem, ind->index, &ind->nalloc, ns1);
 #else
                     if (ns1 > ind->nalloc)
                     {
@@ -8360,7 +8360,7 @@ static void setup_dd_communication(gmx_domdec_t *dd,
                     }
 #endif
 #ifdef GMX_SHMEM_XXX
-                    shrenew(comm->buf_int, &comm->nalloc_int, ns1);
+                    shrenew(dd->shmem, comm->buf_int, &comm->nalloc_int, ns1);
 #else
                     if (ns1 > comm->nalloc_int)
                     {
@@ -8369,7 +8369,7 @@ static void setup_dd_communication(gmx_domdec_t *dd,
                     }
 #endif
 #ifdef GMX_SHMEM_XXX
-                    vec_rvec_check_alloc_shmem(&comm->vbuf, ns1);
+                    vec_rvec_check_alloc_shmem(dd, &comm->vbuf, ns1);
 #else
                     /* TODO: This should use the vec_rvec_check_alloc routine
                      */
@@ -8410,7 +8410,7 @@ static void setup_dd_communication(gmx_domdec_t *dd,
              * in dd_move_x and dd_move_f.
              */
 #ifdef GMX_SHMEM_XXX
-            vec_rvec_check_alloc_shmem(&comm->vbuf, ind->nsend[nzone+1]);
+            vec_rvec_check_alloc_shmem(dd, &comm->vbuf, ind->nsend[nzone+1]);
 #else
             vec_rvec_check_alloc(&comm->vbuf, ind->nsend[nzone+1]);
 #endif
@@ -8444,7 +8444,7 @@ static void setup_dd_communication(gmx_domdec_t *dd,
                      */
                     i = max(cd->ind[0].nrecv[nzone+1], ind->nrecv[nzone+1]);
 #ifdef GMX_SHMEM_XXX
-                    vec_rvec_check_alloc_shmem(&comm->vbuf2, i);
+                    vec_rvec_check_alloc_shmem(dd, &comm->vbuf2, i);
 #else
                     vec_rvec_check_alloc(&comm->vbuf2, i);
 #endif
@@ -8455,8 +8455,8 @@ static void setup_dd_communication(gmx_domdec_t *dd,
 #ifdef GMX_SHMEM_XXX
             if (dd->cg_nalloc == 0)
             {
-            	shrenew(index_gl, &dd->cg_nalloc, pos_cg + ind->nrecv[nzone]);
-            	shrenew(cgindex, &dd->cg_nalloc, pos_cg + ind->nrecv[nzone] + 1);
+            	shrenew(dd->shmem, index_gl, &dd->cg_nalloc, pos_cg + ind->nrecv[nzone]);
+            	shrenew(dd->shmem, cgindex, &dd->cg_nalloc, pos_cg + ind->nrecv[nzone] + 1);
             }
 #else
             if (pos_cg + ind->nrecv[nzone] > dd->cg_nalloc

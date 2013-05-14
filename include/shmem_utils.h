@@ -93,6 +93,10 @@ typedef struct {
     /* Array of locks (i-th is the lock for the i-th pe) */
     shmem_flag_t * lock;
 
+    /* wkr and sync arrays for max_alloc routine */
+    long * max_alloc_pSync1, * max_alloc_pSync2;
+    int  * max_alloc_pWrk1, * max_alloc_pWrk2;
+
 } gmx_domdec_shmem_buf_t;
 
 
@@ -142,24 +146,25 @@ int round_to_next_multiple(int nbytes, int type_size);
  * ========================
  *   Computes the maximum value of memory requested across PEs
  */
-int get_max_alloc(int local_value);
+int get_max_alloc_shmem_dd(gmx_domdec_shmem_buf_t * shmem, int local_value);
+int get_max_alloc_shmem   (int local_value);
 
 /* sh_renew_buf
  * =========================
  *   Renew a temporary shmem buffer by collectively gathering the maximum
  *   size of the array in each pe and calling the shrealloc function with that value
  */
-void * sh_renew_buf(void * buf, int * alloc, const int new_size, const int elem_size);
+void * sh_renew_buf(gmx_domdec_shmem_buf_t * shmem, void * buf, int * alloc, const int new_size, const int elem_size);
 
 /* shrenew macro simplifies the usage of the sh_renew_buf function in the same fashion of
  *  those found in the smalloc.{h,c} files.
  */
 #ifndef GMX_SHMEM_DEBUG
-#define shrenew(PTR, OLD_SIZE, NEW_SIZE) (PTR) = sh_renew_buf((PTR), (OLD_SIZE), (NEW_SIZE), sizeof(*(PTR)))
+#define shrenew(SHMEM, PTR, OLD_SIZE, NEW_SIZE) (PTR) = sh_renew_buf((SHMEM), (PTR), (OLD_SIZE), (NEW_SIZE), sizeof(*(PTR)))
 #else
 
-#define shrenew(PTR, OLD_SIZE, NEW_SIZE) { SHDEBUG(" Before renew , %p size %d \n", PTR, *(OLD_SIZE)); \
- 					   (PTR) = sh_renew_buf((PTR), (OLD_SIZE), (NEW_SIZE), sizeof(*(PTR))); \
+#define shrenew(SHMEM, PTR, OLD_SIZE, NEW_SIZE) { SHDEBUG(" Before renew , %p size %d \n", PTR, *(OLD_SIZE)); \
+ 					   (PTR) = sh_renew_buf((SHMEM), (PTR), (OLD_SIZE), (NEW_SIZE), sizeof(*(PTR))); \
     					   SHDEBUG(" After renew , %p size %d \n",  PTR, *(OLD_SIZE));\
 					 }
 

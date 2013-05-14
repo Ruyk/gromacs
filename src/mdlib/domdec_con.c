@@ -130,7 +130,7 @@ static void dd_move_f_specat(gmx_domdec_t *dd, gmx_domdec_specat_comm_t *spac,
             n   -= n1 + n0;
             vbuf = spac->vbuf;
             /* Send and receive the coordinates */
-#ifdef GMX_SHMEM
+#ifdef GMX_SHMEM_INPLACE
             dd_sendrecv2_rvec_off(dd, d,
                                f, n+n1, n0, vbuf, 0, spas[0].nsend,
                                f, n, n1, vbuf, spas[0].nsend, spas[1].nsend
@@ -331,7 +331,7 @@ static void dd_move_x_specat(gmx_domdec_t *dd, gmx_domdec_specat_comm_t *spac,
             nr1  = spas[1].nrecv;
             if (nvec == 1)
             {
-#ifdef GMX_SHMEM
+#ifdef GMX_SHMEM_INPLACE
             	dd_sendrecv2_rvec_off(dd, d,
             	                  spac->vbuf, ns0, ns1, x0, n, nr1,
             	                  spac->vbuf, 0 ,  ns0, x0, n+nr1, nr0);
@@ -345,7 +345,7 @@ static void dd_move_x_specat(gmx_domdec_t *dd, gmx_domdec_specat_comm_t *spac,
             {
                 /* Communicate both vectors in one buffer */
                 rbuf = spac->vbuf2;
-#ifdef GMX_SHMEM
+#ifdef GMX_SHMEM_INPLACE
                 dd_sendrecv2_rvec_off(dd, d,
                                   spac->vbuf, 2*ns0, 2*ns1, rbuf, 0, 2*nr1,
                                   spac->vbuf, 0, 2*ns0, rbuf, 2*nr1, 2*nr0);
@@ -693,7 +693,7 @@ static int setup_specat_communication(gmx_domdec_t             *dd,
             nr += spac->spas[d][1].nrecv;
         }
 #ifdef GMX_SHMEM
-        shrenew(spac->vbuf, &spac->vbuf_nalloc, vbuf_fac*ns);
+        shrenew(dd->shmem, spac->vbuf, &spac->vbuf_nalloc, vbuf_fac*ns);
 #else
         if (vbuf_fac*ns > spac->vbuf_nalloc)
         {
@@ -705,7 +705,7 @@ static int setup_specat_communication(gmx_domdec_t             *dd,
 #ifdef GMX_SHMEM
         if (vbuf_fac == 2)
         {
-        	shrenew(spac->vbuf2, &spac->vbuf2_nalloc, vbuf_fac*nr);
+        	shrenew(dd->shmem, spac->vbuf2, &spac->vbuf2_nalloc, vbuf_fac*nr);
         }
 #else
         if (vbuf_fac == 2 && vbuf_fac*nr > spac->vbuf2_nalloc)
