@@ -331,7 +331,7 @@ static void dd_move_x_specat(gmx_domdec_t *dd, gmx_domdec_specat_comm_t *spac,
             nr1  = spas[1].nrecv;
             if (nvec == 1)
             {
-#ifdef GMX_SHMEM_INPLACE
+#ifdef GMX_SHMEM
             	dd_sendrecv2_rvec_off(dd, d,
             	                  spac->vbuf, ns0, ns1, x0, n, nr1,
             	                  spac->vbuf, 0 ,  ns0, x0, n+nr1, nr0);
@@ -345,7 +345,7 @@ static void dd_move_x_specat(gmx_domdec_t *dd, gmx_domdec_specat_comm_t *spac,
             {
                 /* Communicate both vectors in one buffer */
                 rbuf = spac->vbuf2;
-#ifdef GMX_SHMEM_INPLACE
+#ifdef GMX_SHMEM
                 dd_sendrecv2_rvec_off(dd, d,
                                   spac->vbuf, 2*ns0, 2*ns1, rbuf, 0, 2*nr1,
                                   spac->vbuf, 0, 2*ns0, rbuf, 2*nr1, 2*nr0);
