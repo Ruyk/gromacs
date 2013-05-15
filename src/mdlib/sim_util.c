@@ -1966,7 +1966,6 @@ void do_force(FILE *fplog, t_commrec *cr,
     {
         flags &= ~GMX_FORCE_NONBONDED;
     }
-
     switch (inputrec->cutoff_scheme)
     {
         case ecutsVERLET:
@@ -2002,7 +2001,9 @@ void do_force(FILE *fplog, t_commrec *cr,
             break;
         default:
             gmx_incons("Invalid cut-off scheme passed!");
+
     }
+
 }
 
 

@@ -165,7 +165,7 @@ void * sh_renew_buf(gmx_domdec_shmem_buf_t * shmem, void * buf, int * alloc, con
 
 #define shrenew(SHMEM, PTR, OLD_SIZE, NEW_SIZE) { SHDEBUG(" Before renew , %p size %d \n", PTR, *(OLD_SIZE)); \
  					   (PTR) = sh_renew_buf((SHMEM), (PTR), (OLD_SIZE), (NEW_SIZE), sizeof(*(PTR))); \
-    					   SHDEBUG(" After renew , %p size %d \n",  PTR, *(OLD_SIZE));\
+    					   SHDEBUG(" After renew , %p size %ld \n",  PTR, (NEW_SIZE));\
 					 }
 
 

@@ -60,17 +60,39 @@
 
 void init_shmem_buf(gmx_domdec_shmem_buf_t * shmem)
 {
-	/* static int pWrk[2>_SHMEM_REDUCE_MIN_WRKDATA_SIZE?2:_SHMEM_REDUCE_MIN_WRKDATA_SIZE];
-	static long pSync[_SHMEM_REDUCE_SYNC_SIZE]; */
+
 
 	if (!shmem)
 			gmx_fatal(FARGS, "Cannot initialise an empty shmem structure");
-    shmem->int_alloc  = 0;
-    shmem->real_alloc = 0;
-    shmem->rvec_alloc = 0;
+
     shmem->int_buf  = NULL;
     shmem->real_buf = NULL;
     shmem->rvec_buf = NULL;
+    shmem->byte_buf = NULL;
+
+#ifdef SHMEM_PRE_INITIALIZE
+#define SHMEM_STARTING_ELEMS 100
+    /* Initial size for the buffers to avoid repeated reallocation */
+    shmem->int_buf  = shmalloc(SHMEM_STARTING_ELEMS * sizeof(int));
+    shmem->real_buf = shmalloc(SHMEM_STARTING_ELEMS * sizeof(real));
+    shmem->rvec_buf = shmalloc(SHMEM_STARTING_ELEMS * sizeof(rvec));
+    shmem->byte_buf = shmalloc(SHMEM_STARTING_ELEMS * sizeof(void *));
+
+    shmem->int_alloc  = SHMEM_STARTING_ELEMS;
+    shmem->real_alloc = SHMEM_STARTING_ELEMS;
+    shmem->rvec_alloc = SHMEM_STARTING_ELEMS;
+    shmem->byte_alloc = SHMEM_STARTING_ELEMS;
+#else
+    shmem->int_alloc  = 0;
+    shmem->real_alloc = 0;
+    shmem->rvec_alloc = 0;
+    shmem->byte_alloc = 0;
+
+    shmem->int_buf  =NULL;
+        shmem->real_buf = NULL;
+        shmem->rvec_buf = NULL;
+        shmem->byte_buf = NULL;
+#endif
     /* Init max_alloc pWrk and pSync arrays */
     sh_snew(shmem->max_alloc_pWrk1, 2>_SHMEM_REDUCE_MIN_WRKDATA_SIZE?2:_SHMEM_REDUCE_MIN_WRKDATA_SIZE);
     sh_snew(shmem->max_alloc_pWrk2, 2>_SHMEM_REDUCE_MIN_WRKDATA_SIZE?2:_SHMEM_REDUCE_MIN_WRKDATA_SIZE);
@@ -96,10 +118,12 @@ void done_shmem_buf(gmx_domdec_shmem_buf_t * shmem)
 	shmem_barrier_all();
 	sh_sfree(shmem->int_buf);
 	sh_sfree(shmem->real_buf);
+	sh_sfree(shmem->rvec_buf);
 	sh_sfree(shmem->byte_buf);
 
 	shmem->int_alloc = 0;
 	shmem->real_alloc = 0;
+	shmem->rvec_alloc = 0;
 	shmem->byte_alloc = 0;
 
 	sh_sfree(shmem->post_events);
@@ -253,7 +277,14 @@ void * sh_renew_buf(gmx_domdec_shmem_buf_t * shmem, void * buf, int * alloc, con
 		SHDEBUG(" Updating alloc (%d) to new global max (%d) with elem size %d \n", (*alloc), global_max, elem_size);
 		// BUGGY: sh_srenew(buf, (*alloc));
 		(*alloc) = global_max;
-		p = shrealloc(buf, global_max * elem_size);
+		if (buf == NULL)
+		{
+			p = shmalloc(global_max * elem_size);
+		}
+		else
+		{
+			p = shrealloc(buf, global_max * elem_size);
+		}
 		if (!p){
 			SHDEBUG(" shrealloc returned NULL \n")
         			   p = buf;

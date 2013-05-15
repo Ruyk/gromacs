@@ -1341,12 +1341,7 @@ void forcerec_set_ranges(t_forcerec *fr,
 
         if (fr->bTwinRange)
         {
-#ifdef GMX_SHMEM
-        	SHDEBUG(" Allocating f_twin \n");
-        	sh_srenew(fr->f_twin, fr->nalloc_force);
-#else
             srenew(fr->f_twin, fr->nalloc_force);
-#endif
         }
     }
 

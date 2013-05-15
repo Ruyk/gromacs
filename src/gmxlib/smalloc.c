@@ -434,7 +434,7 @@ void *save_shcalloc(const char *name, const char *file, int line,
     SHDEBUG(" Entering shcalloc for var %s, ptr %p, nelem %ld, elsize %ld \n", name, p, nelem, elsize);
 	global_max = get_max_alloc_shmem(((size_t)nelem*(size_t)elsize));
     p = NULL;
-    if ((nelem == 0) || (elsize == 0))
+    if (global_max == 0)
     {
         p = NULL;
     }

@@ -1699,13 +1699,20 @@ static void dd_realloc_state(t_state *state, rvec **f, int nalloc)
 static void dd_realloc_state_shmem(t_state *state, rvec **f, int nalloc)
 {
     int est;
+    int global_max;
 
     if (debug)
     {
         fprintf(debug, "Reallocating state: currently %d, required %d, allocating %d\n", state->nalloc, nalloc, over_alloc_dd(nalloc));
     }
 
-    state->nalloc = get_max_alloc_shmem(over_alloc_dd(nalloc));
+
+    global_max = get_max_alloc_shmem(over_alloc_dd(nalloc));
+    if (state->nalloc > global_max)
+    {
+    	return;
+    }
+    state->nalloc = global_max;
 
     for (est = 0; est < estNR; est++)
     {
@@ -4971,6 +4978,7 @@ static void dd_redistribute_cg(FILE *fplog, gmx_large_int_t step,
         	SHDEBUG(" After dd_check_alloc_ncg , home_pos %d tmp %d \n", home_pos_at, tmp);
         }
 #endif
+
         SHDEBUG(" ncg_recv is %d \n", ncg_recv);
         /* Process the received charge groups */
         buf_pos = 0;
@@ -5086,7 +5094,9 @@ static void dd_redistribute_cg(FILE *fplog, gmx_large_int_t step,
                 dd->cgindex[home_pos_cg+1] = dd->cgindex[home_pos_cg] + nrcg;
 
                 /* Copy the state from the buffer */
-                // dd_check_alloc_ncg(fr, state, f, home_pos_cg+1);
+#ifndef GMX_SHMEM
+                dd_check_alloc_ncg(fr, state, f, home_pos_cg+1);
+#else
                 /**** TODO: Move to another function ***/
                 if (home_pos_cg+1 > fr->cg_nalloc)
                     {
@@ -5102,7 +5112,7 @@ static void dd_redistribute_cg(FILE *fplog, gmx_large_int_t step,
                         }
                     }
                 /*** end of new function */
-
+#endif
                 if (fr->cutoff_scheme == ecutsGROUP)
                 {
                     cg_cm = fr->cg_cm;
@@ -5120,12 +5130,12 @@ static void dd_redistribute_cg(FILE *fplog, gmx_large_int_t step,
 
 
 
-// #ifndef GMX_SHMEM
+#ifndef GMX_SHMEM
                 if (home_pos_at+nrcg > state->nalloc)
                 {
-                    dd_realloc_state_shmem(state, f, home_pos_at+nrcg);
+                    dd_realloc_state(state, f, home_pos_at+nrcg);
                 }
-// #endif
+#endif
                 for (i = 0; i < nrcg; i++)
                 {
                     copy_rvec(comm->vbuf.v[buf_pos++],
@@ -8500,6 +8510,7 @@ static void setup_dd_communication(gmx_domdec_t *dd,
             {
                 recv_vr = comm->vbuf2.v;
             }
+
             dd_sendrecv_rvec(dd, dim_ind, dddirBackward,
                              comm->vbuf.v, nsend,
                              recv_vr,      ind->nrecv[nzone]);
@@ -9074,7 +9085,6 @@ static void dd_sort_state(gmx_domdec_t *dd, int ePBC,
     int               *cgindex;
     int                ncg_new, i, *ibuf, cgsize;
     rvec              *vbuf;
-    SHDEBUG(" Sorting \n");
     sort = dd->comm->sort;
 
     if (dd->ncg_home > sort->sort_nalloc)
@@ -9097,7 +9107,6 @@ static void dd_sort_state(gmx_domdec_t *dd, int ePBC,
             gmx_incons("unimplemented");
             ncg_new = 0;
     }
-    SHDEBUG(" BEFORE vec_rvec_check_alloc_shmem \n");
     /* We alloc with the old size, since cgindex is still old */
 #ifdef GMX_SHMEM_XXX
     vec_rvec_check_alloc_shmem(&dd->comm->vbuf, dd->cgindex[dd->ncg_home]);
@@ -9105,7 +9114,6 @@ static void dd_sort_state(gmx_domdec_t *dd, int ePBC,
     vec_rvec_check_alloc(&dd->comm->vbuf, dd->cgindex[dd->ncg_home]);
 #endif
     vbuf = dd->comm->vbuf.v;
-    SHDEBUG(" After vec_rvec_check_alloc_shmem \n");
 
     if (dd->comm->bCGs)
     {
@@ -9211,7 +9219,6 @@ static void dd_sort_state(gmx_domdec_t *dd, int ePBC,
         }
         fr->ns.grid->nr = dd->ncg_home;
     }
-    SHDEBUG(" End of Sorting \n");
 }
 
 static void add_dd_statistics(gmx_domdec_t *dd)
@@ -9564,13 +9571,11 @@ void dd_partition_system(FILE                *fplog,
     /* Check if we should sort the charge groups */
     if (comm->nstSortCG > 0)
     {
-    	SHDEBUG(" This process will sort the charges \n ");
         bSortCG = (bMasterState ||
                    (bRedist && (step % comm->nstSortCG == 0)));
     }
     else
     {
-    	SHDEBUG(" This process is NOT sorting the charges \n ");
         bSortCG = FALSE;
     }
 
@@ -9579,7 +9584,6 @@ void dd_partition_system(FILE                *fplog,
     ncg_moved = 0;
     if (bRedist)
     {
-    	SHDEBUG(" This process will redistribute CG \n");
         wallcycle_sub_start(wcycle, ewcsDD_REDIST);
 
         dd_redistribute_cg(fplog, step, dd, ddbox.tric_dir,
@@ -9597,7 +9601,6 @@ void dd_partition_system(FILE                *fplog,
 
     if (bBoxChanged)
     {
-    	SHDEBUG(" Calling comm_dd_ns_cell_sizes \n");
         comm_dd_ns_cell_sizes(dd, &ddbox, cell_ns_x0, cell_ns_x1, step);
     }
 
@@ -9620,7 +9623,6 @@ void dd_partition_system(FILE                *fplog,
 
     if (bSortCG)
     {
-    	SHDEBUG(" This proc is entering the sorting \n");
         wallcycle_sub_start(wcycle, ewcsDD_GRID);
 
         /* Sort the state on charge group position.
@@ -9674,7 +9676,6 @@ void dd_partition_system(FILE                *fplog,
             ncells_new[ZZ] != ncells_old[ZZ])
         {
             bResortAll = TRUE;
-            SHDEBUG(" Resort All is true in this proc \n");
         }
 
         if (debug)
@@ -9691,19 +9692,13 @@ void dd_partition_system(FILE                *fplog,
 
         wallcycle_sub_stop(wcycle, ewcsDD_GRID);
     }
-    else
-    {
-    	SHDEBUG(" This process will not sort at all");
-    }
 
     wallcycle_sub_start(wcycle, ewcsDD_SETUPCOMM);
 
     /* Setup up the communication and communicate the coordinates */
     setup_dd_communication(dd, state_local->box, &ddbox, fr, state_local, f);
-
     /* Set the indices */
     make_dd_indices(dd, cgs_gl->index, cg0);
-
     /* Set the charge group boundaries for neighbor searching */
     set_cg_boundaries(&comm->zones);
 
@@ -9727,6 +9722,8 @@ void dd_partition_system(FILE                *fplog,
     {
         np[dd->dim[i]] = comm->cd[i].np;
     }
+
+
     dd_make_local_top(fplog, dd, &comm->zones, dd->npbcdim, state_local->box,
                       comm->cellsize_min, np,
                       fr,
@@ -9850,7 +9847,6 @@ void dd_partition_system(FILE                *fplog,
                        mdatoms->chargeA, mdatoms->chargeB,
                        dd_pme_maxshift_x(dd), dd_pme_maxshift_y(dd));
     }
-
     if (constr)
     {
         set_constraints(constr, top_local, ir, mdatoms, cr);
@@ -9878,9 +9874,7 @@ void dd_partition_system(FILE                *fplog,
      * the last vsite construction, we need to communicate the constructing
      * atom coordinates again (for spreading the forces this MD step).
      */
-    SHDEBUG(" BEFORE DD_MOVE_X_SITES \n");
     dd_move_x_vsites(dd, state_local->box, state_local->x);
-    SHDEBUG(" AFTER DD_MOVE_X_SITES \n");
 
     wallcycle_sub_stop(wcycle, ewcsDD_TOPOTHER);
 
@@ -9890,7 +9884,6 @@ void dd_partition_system(FILE                *fplog,
         write_dd_pdb("dd_dump", step, "dump", top_global, cr,
                      -1, state_local->x, state_local->box);
     }
-    SHDEBUG(" AFTER PDB DD_MOVE_X_SITES \n");
     /* Store the partitioning step */
     comm->partition_step = step;
 
@@ -9912,4 +9905,5 @@ void dd_partition_system(FILE                *fplog,
         check_index_consistency(dd, top_global->natoms, ncg_mtop(top_global),
                                 "after partitioning");
     }
+
 }
