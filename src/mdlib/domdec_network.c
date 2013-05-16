@@ -623,7 +623,7 @@ void dd_scatter(gmx_domdec_t *dd, int nbytes, void *src, void *dest)
 
 void dd_gather(gmx_domdec_t *dd, int nbytes, void *src, void *dest)
 {
-#ifdef GMX_SHMEM_XXX
+#ifdef GMX_SHMEM
 	gmx_domdec_shmem_buf_t * shmem = dd->shmem;
 	int size;
 

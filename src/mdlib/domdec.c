@@ -4979,7 +4979,6 @@ static void dd_redistribute_cg(FILE *fplog, gmx_large_int_t step,
         }
 #endif
 
-        SHDEBUG(" ncg_recv is %d \n", ncg_recv);
         /* Process the received charge groups */
         buf_pos = 0;
         for (cg = 0; cg < ncg_recv; cg++)
