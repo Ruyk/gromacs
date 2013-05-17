@@ -278,7 +278,7 @@ void dd_sendrecv_rvec(const gmx_domdec_t *dd,
 #endif
 }
 
-#ifdef GMX_SHMEM_XXX
+#ifdef GMX_SHMEM
 void dd_sendrecv2_rvec_off(const gmx_domdec_t *dd,
                        int ddimind,
                        rvec *buf_s_fw, int off_s_fw, int n_s_fw,
@@ -288,65 +288,74 @@ void dd_sendrecv2_rvec_off(const gmx_domdec_t *dd,
 {
 
 	int         rank_fw, rank_bw;
-	static int off_fw, off_bw;
-	int off_l;
-    gmx_domdec_shmem_buf_t * shmem = dd->shmem;
+	static int off_fw = -1;
+	static int off_bw = -1;
+	static int ncall = 0;
+	int off_l, nrcall;
+	gmx_domdec_shmem_buf_t * shmem = dd->shmem;
 
-    rank_fw = dd->neighbor[ddimind][0];
-    rank_bw = dd->neighbor[ddimind][1];
+	rank_fw = dd->neighbor[ddimind][0];
+	rank_bw = dd->neighbor[ddimind][1];
+
+	SHDEBUG(" SendRecv2 (S1: %d,R1: %d) using SHMEM (n_s_fw %d, n_r_bw %d) \n",
+			rank_fw, rank_bw, n_s_fw, n_r_fw);
+
+	shmem_barrier_all();
+	// off_fw = off_s_fw;
+	// off_bw = off_s_bw;
+	// shmem_barrier_all();
+
+  	// Tell rank_bw
+	shmem_int_p(&off_fw, off_s_fw, rank_fw);
+	shmem_quiet();
+	SHDEBUG(" Waiting for fw to be != -1 \n")
+	shmem_int_wait(&off_fw, -1);
+
+	/* Forward */
+	if (n_r_fw)
+	{
+		SHDEBUG(" Will get %d*%d=%d bytes from pe %d addr %p \n", n_r_fw, DIM, n_r_fw * sizeof(rvec), rank_bw, buf_s_fw)
+        		off_l = off_fw; // shmem_int_g(&off_fw, rank_bw);
+		SHDEBUG(" The offset I have to use is %d  \n", off_l);
+		shmem_getmem( (buf_r_fw + (off_r_fw)), buf_s_fw + (off_l), n_r_fw * sizeof(rvec), rank_bw);
+	}
+	shmem_set_done(shmem, rank_bw);
+
+	shmem_wait_done(shmem, _my_pe());
+	shmem_clear_done(shmem, _my_pe());
+
+	shmem_int_p(&off_fw, -1, rank_fw);
+	shmem_quiet();
+	SHDEBUG(" Waiting for off_fw to be -1 \n")
+	shmem_int_wait_until(&off_fw, SHMEM_CMP_LT, 0);
+
+	SHDEBUG(" Second SendRecv S2:%d R2:%d (n_s_bw %d, n_r_bw %d) \n",
+			rank_bw, rank_fw, n_s_bw, n_r_bw);
+
+	shmem_int_p(&off_bw, off_s_bw, rank_bw);
+	shmem_quiet();
+	SHDEBUG(" Waiting for bw to be != -1 \n")
+	shmem_int_wait(&off_bw, -1);
+
+	/* Backward */
+	if (n_r_bw)
+	{
+		SHDEBUG(" Will get %d*%d=%d bytes from pe %d addr %p \n", n_r_bw, DIM, n_r_bw * sizeof(rvec), rank_fw, buf_s_bw)
+        		off_l = off_bw; // shmem_int_g(&off_bw, rank_fw);
+		shmem_getmem(buf_r_bw + (off_r_bw), (buf_s_bw + (off_l)), n_r_bw * sizeof(rvec), rank_fw);
+	}
+	SHDEBUG(" End of sendrecv2 \n");
+	shmem_set_done(shmem, rank_fw);
+
+	shmem_wait_done(shmem, _my_pe());
+	shmem_clear_done(shmem, _my_pe());
+
+	shmem_int_p(&off_bw, -1, rank_bw);
+	shmem_quiet();
+	SHDEBUG(" Waiting for off_bw to be -1 \n")
+	shmem_int_wait_until(&off_bw, SHMEM_CMP_LT, 0);
 
 
-
-    SHDEBUG(" SendRecv2 (S1: %d,R1: %d) using SHMEM (n_s_fw %d, n_r_bw %d) \n",
-    		rank_fw, rank_bw, n_s_fw, n_r_fw);
-
-    // Is rank_bw ready?
-    shmem_barrier_all();
-    shmem_lock(shmem, rank_bw);
-
-    SHDEBUG(" Will put %d on %d \n", off_s_fw, rank_fw);
-    shmem_int_p(&off_fw, -1, rank_fw);
-    shmem_int_p(&off_fw, off_s_fw, rank_fw);
-    shmem_quiet();
-    shmem_int_wait(&off_fw, -1);
-    // shmem_barrier_all();
-
-
-
-    /* Forward */
-   if (n_r_fw)
-    {
-    	SHDEBUG(" Will get %d*%d=%d bytes from pe %d addr %p \n", n_r_fw, DIM, n_r_fw * sizeof(rvec), rank_bw, buf_s_fw)
-        off_l = off_fw; // shmem_int_g(&off_fw, rank_bw);
-    	SHDEBUG(" The offset I have to use is %d  \n", off_l);
-    	shmem_getmem( (buf_r_fw + (off_r_fw)), buf_s_fw + (off_l), n_r_fw * sizeof(rvec), rank_bw);
-
-    }
-   shmem_unlock(shmem, rank_bw);
-
-    SHDEBUG(" Second SendRecv S2:%d R2:%d (n_s_bw %d, n_r_bw %d) \n",
-    		rank_bw, rank_fw, n_s_bw, n_r_bw);
-
-    shmem_lock(shmem, rank_fw);
-    shmem_int_p(&off_bw, -1, rank_bw);
-    shmem_int_p(&off_bw, off_s_bw, rank_bw);
-    shmem_quiet();
-    shmem_int_wait(&off_bw, -1);
-    // shmem_barrier_all();
-
-    /* Backward */
-    if (n_r_bw)
-       {
-       	SHDEBUG(" Will get %d*%d=%d bytes from pe %d addr %p \n", n_r_bw, DIM, n_r_bw * sizeof(rvec), rank_fw, buf_s_bw)
-        off_l = off_bw; // shmem_int_g(&off_bw, rank_fw);
-       	shmem_getmem(buf_r_bw + (off_r_bw), (buf_s_bw + (off_l)), n_r_bw * sizeof(rvec), rank_fw);
-       }
-       else
-       {
-       	SHDEBUG(" Nothing to get \n")
-       }
-    shmem_unlock(shmem, rank_fw);
-    SHDEBUG(" End of sendrecv2 \n");
 }
 #endif /* GMX_SHMEM */
 
