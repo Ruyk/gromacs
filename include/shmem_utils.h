@@ -61,6 +61,7 @@
 
 #define GMX_SHMEM_DEBUG
 
+#include <stdlib.h>
 #include <shmem.h>
 #include <macros.h>
 
@@ -87,7 +88,7 @@ typedef struct {
     int    rvec_alloc;
     void * byte_buf;   /* For collective routines without specific type (e.g broadcast) */
     int    byte_alloc;
-    /* An event array to synchronize shmem operations without using a global barrier */
+    /* An event array to synchronize shmem operations */
     shmem_flag_t * post_events;
     shmem_flag_t * done_events;
     /* Array of locks (i-th is the lock for the i-th pe) */
@@ -173,6 +174,14 @@ void * sh_renew_buf(gmx_domdec_shmem_buf_t * shmem, void * buf, int * alloc, con
 #endif
 
 
+void shmem_void_sendrecv(gmx_domdec_shmem_buf_t* shmem, void* buf_s, int n_s,
+		int rank_s, void* buf_r, int n_r, int rank_r);
+void shmem_real_sendrecv(gmx_domdec_shmem_buf_t* shmem, real* buf_s, int n_s,
+		int rank_s, real* buf_r, int n_r, int rank_r);
+void shmem_int_sendrecv(gmx_domdec_shmem_buf_t* shmem, int* buf_s, int n_s,
+		int rank_s, int* buf_r, int n_r, int rank_r);
+void shmem_rvec_sendrecv(gmx_domdec_shmem_buf_t* shmem,rvec* buf_s, int n_s,
+		int rank_s, rvec* buf_r, int n_r, int rank_r);
 
 #endif /* GMX_SHMEM */
 

@@ -67,52 +67,10 @@ void dd_sendrecv_int(const gmx_domdec_t *dd,
     int        rank_s, rank_r;
     gmx_domdec_shmem_buf_t * shmem = dd->shmem;
 
-    if (!buf_s && n_s > 0)
-    {
-    	SHDEBUG(" Buf_s was null but sending %d elements \n", n_s);
-    }
-    if (!buf_r && n_r > 0)
-    {
-    	SHDEBUG(" Buf_r was null but receiving %d elements ", n_r);
-    }
-
     rank_s = dd->neighbor[ddimind][direction == dddirForward ? 0 : 1];
     rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
 
-    SHDEBUG(" SendRecv (S: %d,R: %d) using SHMEM (n_s %d, n_r %d) \n", rank_s, rank_r, n_s, n_r);
-    shrenew(shmem, shmem->int_buf, &(shmem->int_alloc), n_s);
-
-    // shmem_barrier_all();
-    shmem_lock(shmem, rank_s);
-
-    if (n_s)
-    {
-    	// Put buf_is in rank_s
-    	//               T       S     Len   Pe
-    	shmem_int_put(shmem->int_buf, buf_s, n_s, rank_s);
-    	shmem_quiet();
-    	SHDEBUG(" Data posted by %d to %d \n", _my_pe(), rank_s);
-    }
-    shmem_set_post(shmem, rank_s);
-    SHDEBUG(" Event posted to %d \n", rank_s);
-
-    // Receive data
-    shmem_wait_post (shmem, _my_pe());
-    SHDEBUG(" Waiting for event from %d \n", _my_pe());
-    if (n_r)
-    {
-    	SHDEBUG(" Updating reception buffer from %d \n", rank_r);
-    	memcpy(buf_r, shmem->int_buf, n_r * sizeof(int));
-    	SHDEBUG(" Copied %p into %p, size %ld, from %d \n", shmem->int_buf, buf_r, n_r*sizeof(int), rank_r);
-    }
-    shmem_set_done(shmem, rank_r);
-    shmem_clear_post(shmem, _my_pe());
-    SHDEBUG(" Event of %d cleared \n", _my_pe());
-
-    shmem_wait_done(shmem, _my_pe());
-    shmem_clear_done(shmem, _my_pe());
-    shmem_unlock(shmem, rank_s);
-
+	shmem_int_sendrecv(shmem, buf_s, n_s, rank_s, buf_r, n_r, rank_r);
 #elif defined(GMX_MPI)
     int        rank_s, rank_r;
     MPI_Status stat;
@@ -140,6 +98,8 @@ void dd_sendrecv_int(const gmx_domdec_t *dd,
 #endif
 }
 
+
+
 void dd_sendrecv_real(const gmx_domdec_t *dd,
                       int ddimind, int direction,
                       real *buf_s, int n_s,
@@ -153,31 +113,7 @@ void dd_sendrecv_real(const gmx_domdec_t *dd,
     rank_s = dd->neighbor[ddimind][direction == dddirForward ? 0 : 1];
     rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
 
-    SHDEBUG(" SendRecv (S: %d,R: %d) using SHMEM (n_s %d, n_r %d) \n", rank_s, rank_r, n_s, n_r);
-    shrenew(shmem, shmem->real_buf, &(shmem->real_alloc), n_s);
-
-    // shmem_barrier_all();
-    shmem_lock(shmem, rank_s);
-
-    if (n_s) {
-    	// Put buf_is in rank_s
-    	//               T       S     Len   Pe
-    	shmem_float_put(shmem->real_buf, buf_s, n_s, rank_s);
-    }
- 	shmem_set_post(shmem, rank_s);
-
-    shmem_wait_post(shmem, _my_pe());
-    if (n_r) {
-    	SHDEBUG(" Updating reception buffer \n");
-    	memcpy(buf_r, shmem->real_buf, n_r * sizeof(real));
-    }
-    shmem_set_done(shmem, rank_r);
-    shmem_clear_post(shmem, _my_pe());
-
-    shmem_wait_done(shmem, _my_pe());
-    shmem_clear_done(shmem, _my_pe());
-    shmem_unlock(shmem, rank_s);
-
+	shmem_real_sendrecv(shmem, buf_s, n_s, rank_s, buf_r, n_r, rank_r);
 #elif defined(GMX_MPI)
     int        rank_s, rank_r;
     MPI_Status stat;
@@ -220,37 +156,7 @@ void dd_sendrecv_rvec(const gmx_domdec_t *dd,
 
     SHDEBUG(" SendRecv RVEC (S: %d,R: %d) using SHMEM (n_s %d, n_r %d) (size rvec: %ld) \n", rank_s, rank_r, n_s, n_r, sizeof(rvec));
 
-    shrenew(shmem, shmem->rvec_buf, &(shmem->rvec_alloc), n_s * sizeof(rvec));
-    // shrenew(shmem, shmem->byte_buf, &(shmem->byte_alloc), size);
-
-    shmem_lock(shmem, rank_s);
-
-    if (n_s) {
-    	int i = 0;
-    	// Put buf_is in rank_s
-    	//               T       S     Len   Pe
-    	shmem_float_put((real *) shmem->rvec_buf, (real *) buf_s, n_s * DIM, rank_s);
-    	SHDEBUG(" Putting n_s * srvec %ld data to rank_s %d \n", n_s*sizeof(rvec), rank_s)
-    }
-    SHDEBUG(" Set flag %d \n", rank_s);
-	shmem_set_post(shmem, rank_s);
-
-	SHDEBUG(" Wait flag %d \n", _my_pe());
-	shmem_wait_post(shmem, _my_pe());
-
-    if (n_r)
-    {
-    	SHDEBUG(" Updating reception buffer \n");
-    	memcpy(buf_r, shmem->rvec_buf, n_r * sizeof(rvec));
-    }
-    shmem_set_done(shmem, rank_r);
-    shmem_clear_post(shmem, _my_pe());
-
-    shmem_wait_done(shmem, _my_pe());
-    shmem_clear_done(shmem, _my_pe());
-    shmem_unlock(shmem, rank_s);
-
-
+	shmem_rvec_sendrecv(shmem, buf_s, n_s, rank_s, buf_r, n_r, rank_r);
 #elif defined(GMX_MPI)
     int        rank_s, rank_r;
     MPI_Status stat;
@@ -314,9 +220,9 @@ void dd_sendrecv2_rvec_off(const gmx_domdec_t *dd,
 	/* Forward */
 	if (n_r_fw)
 	{
-		SHDEBUG(" Will get %d*%d=%d bytes from pe %d addr %p \n", n_r_fw, DIM, n_r_fw * sizeof(rvec), rank_bw, buf_s_fw)
+		// SHDEBUG(" Will get %d*%d=%d bytes from pe %d addr %p \n", n_r_fw, DIM, n_r_fw * sizeof(rvec), rank_bw, buf_s_fw)
         		off_l = off_fw; // shmem_int_g(&off_fw, rank_bw);
-		SHDEBUG(" The offset I have to use is %d  \n", off_l);
+		// SHDEBUG(" The offset I have to use is %d  \n", off_l);
 		shmem_getmem( (buf_r_fw + (off_r_fw)), buf_s_fw + (off_l), n_r_fw * sizeof(rvec), rank_bw);
 	}
 	shmem_set_done(shmem, rank_bw);
@@ -373,60 +279,14 @@ void dd_sendrecv2_rvec(const gmx_domdec_t *dd,
     rank_fw = dd->neighbor[ddimind][0];
     rank_bw = dd->neighbor[ddimind][1];
 
-    SHDEBUG(" SendRecv2 (S1: %d,R1: %d) using SHMEM (n_s_fw %d, n_r_bw %d) \n",
-    		rank_fw, rank_bw, n_s_fw, n_r_fw);
-    shrenew(shmem, shmem->rvec_buf, &(shmem->rvec_alloc), max(n_s_fw, n_s_bw) * sizeof(rvec));
+    shmem_rvec_sendrecv(shmem, buf_s_fw, n_s_fw, rank_fw, buf_r_fw, n_r_fw, rank_bw);
 
-    // shmem_barrier_all();
-    shmem_lock(shmem, rank_fw);
-
-    // 1. Send buf_s_fw to rank_fw, put in buf_r_fw
-    if (n_s_fw) {
-    	// Put buf_is in rank_s
-    	//               T       S     Len   Pe
-    	shmem_float_put((real *) shmem->rvec_buf, (real *) buf_s_fw, n_s_fw * DIM, rank_fw);
-    	// shmem_float_put((real *) buf_r_fw, (real *) buf_s_fw, n_s_fw * DIM, rank_fw);
-    }
-    shmem_set_post(shmem, rank_fw);
-
-    shmem_wait_post(shmem, _my_pe());
-    if (n_r_fw) {
-    	SHDEBUG(" Updating reception buffer \n");
-    	memcpy(buf_r_fw, shmem->rvec_buf, n_r_fw * sizeof(rvec));
-    };
-    shmem_set_done(shmem, rank_bw);
-    shmem_clear_post(shmem, _my_pe());
-
-    shmem_wait_done(shmem, _my_pe());
-    shmem_clear_done(shmem, _my_pe());
-    shmem_unlock(shmem, rank_fw);
-
+    shmem_barrier_all();
     SHDEBUG(" Second SendRecv S2:%d R2:%d (n_s_bw %d, n_r_bw %d) \n",
     		rank_bw, rank_fw, n_s_bw, n_r_bw);
 
-    shmem_barrier_all();
-    shmem_lock(shmem, rank_bw);
-    // 2. Send buf_s_bw to rank_bw put in buf_r_bw from rank_fw
-    if (n_s_bw)
-    {
-        	// Put buf_is in rank_s
-        	//               T       S     Len   Pe
-        	shmem_float_put((real *) shmem->rvec_buf, (real *) buf_s_bw, n_s_bw * DIM, rank_bw);
-        	// shmem_float_put((real *) buf_r_bw, (real *) buf_s_bw, n_s_bw * DIM, rank_bw);
-    }
-    shmem_set_post(shmem, rank_bw);
+    shmem_rvec_sendrecv(shmem, buf_s_bw, n_s_bw, rank_bw, buf_r_bw, n_r_bw, rank_fw);
 
-    shmem_wait_post(shmem, _my_pe());
-    if (n_r_bw) {
-        	SHDEBUG(" Updating reception buffer \n");
-        	memcpy(buf_r_bw, shmem->rvec_buf, n_r_bw * sizeof(rvec));
-    }
-    shmem_set_done(shmem, rank_fw);
-    shmem_clear_post(shmem, _my_pe());
-
-     shmem_wait_done(shmem, _my_pe());
-     shmem_clear_done(shmem, _my_pe());
-     shmem_unlock(shmem, rank_bw);
    SHDEBUG("Done \n");
 #elif defined(GMX_MPI)
     int         rank_fw, rank_bw, nreq;
