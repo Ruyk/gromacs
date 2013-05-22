@@ -55,7 +55,24 @@
 
 #define DDMASTERRANK(dd)   (dd->masterrank)
 
+void dd_sendrecv_int_off(const gmx_domdec_t *dd,
+                      int ddimind, int direction,
+                      real *buf_s, int off_s, int n_s,
+                      real *buf_r, int off_r, int n_r)
+{
+    int        rank_s, rank_r;
+    static int off_l = -1;
+    gmx_domdec_shmem_buf_t * shmem = dd->shmem;
 
+    rank_s = dd->neighbor[ddimind][direction == dddirForward ? 0 : 1];
+    rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
+
+    shmem_barrier_all();
+    shmem_int_sendrecv_nobuf(shmem, &off_r, 1, rank_s, &off_l, 1, rank_r);
+
+	shmem_int_sendrecv_nobuf(shmem, buf_s + off_s, n_s, rank_s, buf_r + off_l, n_r, rank_r);
+
+}
 
 void dd_sendrecv_int(const gmx_domdec_t *dd,
                      int ddimind, int direction,
@@ -99,6 +116,46 @@ void dd_sendrecv_int(const gmx_domdec_t *dd,
 }
 
 
+void dd_sendrecv_real_off(const gmx_domdec_t *dd,
+                      int ddimind, int direction,
+                      real *buf_s, int off_s, int n_s,
+                      real *buf_r, int off_r, int n_r)
+{
+    int        rank_s, rank_r;
+    static int off_l = -1;
+    gmx_domdec_shmem_buf_t * shmem = dd->shmem;
+
+    rank_s = dd->neighbor[ddimind][direction == dddirForward ? 0 : 1];
+    rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
+
+    shmem_barrier_all();
+    shmem_int_sendrecv_nobuf(shmem, &off_r, 1, rank_s, &off_l, 1, rank_r);
+
+	shmem_real_sendrecv_nobuf(shmem, buf_s + off_s, n_s, rank_s, buf_r + off_l, n_r, rank_r);
+
+}
+
+void dd_sendrecv_rvec_off(const gmx_domdec_t *dd,
+                      int ddimind, int direction,
+                      rvec *buf_s, int off_s, int n_s,
+                      rvec *buf_r, int off_r, int n_r)
+{
+    int        rank_s, rank_r;
+    static int off_l = -1;
+    gmx_domdec_shmem_buf_t * shmem = dd->shmem;
+
+    rank_s = dd->neighbor[ddimind][direction == dddirForward ? 0 : 1];
+    rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
+
+    shmem_barrier_all();
+
+    SHDEBUG(" Interchange off_r %d with rank %d \n", off_r, rank_r);
+    shmem_int_sendrecv_nobuf(shmem, &off_r, 1, rank_s, &off_l, 1, rank_r);
+    SHDEBUG(" Result %d \n", off_l);
+    SHDEBUG(" Sendrecv rank_s %d rank_r %d \n", rank_s, rank_r);
+	shmem_rvec_sendrecv_nobuf(shmem, buf_s + off_s, n_s, rank_s, buf_r + off_l, n_r, rank_r);
+
+}
 
 void dd_sendrecv_real(const gmx_domdec_t *dd,
                       int ddimind, int direction,
@@ -106,7 +163,6 @@ void dd_sendrecv_real(const gmx_domdec_t *dd,
                       real *buf_r, int n_r)
 {
 #ifdef GMX_SHMEM
-#warning " Replacing SendRecv real"
     int        rank_s, rank_r;
     gmx_domdec_shmem_buf_t * shmem = dd->shmem;
 
@@ -147,7 +203,6 @@ void dd_sendrecv_rvec(const gmx_domdec_t *dd,
                       rvec *buf_r, int n_r)
 {
 #ifdef GMX_SHMEM
-#warning " Replacing SendRecv rvec"
     int        rank_s, rank_r;
     gmx_domdec_shmem_buf_t * shmem = dd->shmem;
 
@@ -246,7 +301,7 @@ void dd_sendrecv2_rvec_off(const gmx_domdec_t *dd,
 	/* Backward */
 	if (n_r_bw)
 	{
-		SHDEBUG(" Will get %d*%d=%d bytes from pe %d addr %p \n", n_r_bw, DIM, n_r_bw * sizeof(rvec), rank_fw, buf_s_bw)
+		// SHDEBUG(" Will get %d*%d=%d bytes from pe %d addr %p \n", n_r_bw, DIM, n_r_bw * sizeof(rvec), rank_fw, buf_s_bw)
         		off_l = off_bw; // shmem_int_g(&off_bw, rank_fw);
 		shmem_getmem(buf_r_bw + (off_r_bw), (buf_s_bw + (off_l)), n_r_bw * sizeof(rvec), rank_fw);
 	}

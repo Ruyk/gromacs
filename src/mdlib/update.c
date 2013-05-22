@@ -1481,11 +1481,23 @@ void update_pcouple(FILE             *fplog,
 
 static rvec *get_xprime(const t_state *state, gmx_update_t upd)
 {
+#ifdef GMX_SHMEM
+	/* xp_nalloc is init. to zero, and then is always the same
+	 * as state->nalloc. Since state->nalloc is sym. , we do not
+	 * need to compute the global maximum again, just realloc
+	 */
+    if (state->nalloc > upd->xp_nalloc)
+    {
+        upd->xp_nalloc = state->nalloc;
+        sh_srenew(upd->xp, upd->xp_nalloc);
+    }
+#else
     if (state->nalloc > upd->xp_nalloc)
     {
         upd->xp_nalloc = state->nalloc;
         srenew(upd->xp, upd->xp_nalloc);
     }
+#endif
 
     return upd->xp;
 }
@@ -1520,7 +1532,7 @@ void update_constraints(FILE             *fplog,
     tensor               vir_con;
     rvec                *vbuf, *xprime = NULL;
     int                  nth, th;
-
+    SHDEBUG(" Constraints within update IN \n");
     if (constr)
     {
         bDoConstr = TRUE;
@@ -1688,6 +1700,7 @@ void update_constraints(FILE             *fplog,
                     state->natoms, state->x, upd->xp, state->v, force);
     }
 /* ############# END the update of velocities and positions ######### */
+    SHDEBUG(" Constraints within update OUT \n");
 }
 
 void update_box(FILE             *fplog,

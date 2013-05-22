@@ -454,7 +454,7 @@ void *save_shcalloc(const char *name, const char *file, int line,
 #endif
         /* We are forced to emulate calloc(3) when using shmem since there
          *  is no shmem calloc equivalent. */
-        if ((p = shmalloc((size_t)nelem*(size_t)elsize)) == NULL)
+        if ((p = shmalloc(global_max)) == NULL)
         {
             gmx_fatal(errno, __FILE__, __LINE__,
                       "Not enough memory. Failed to calloc %"gmx_large_int_fmt
@@ -463,7 +463,7 @@ void *save_shcalloc(const char *name, const char *file, int line,
                       (gmx_large_int_t)nelem, (gmx_large_int_t)elsize,
                       name, file, line);
         }
-        memset(p, 0, (size_t) (nelem * elsize));
+        memset(p, 0, (size_t) (global_max));
     }
 #ifdef DEBUG
     log_action(1, name, file, line, nelem, elsize, p);

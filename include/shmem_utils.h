@@ -100,6 +100,8 @@ typedef struct {
 
 } gmx_domdec_shmem_buf_t;
 
+#define SHMEM_OVER_ALLOC_FAC 5
+int over_alloc_shmem(int n);
 
 
 /* Flag handling
@@ -164,9 +166,9 @@ void * sh_renew_buf(gmx_domdec_shmem_buf_t * shmem, void * buf, int * alloc, con
 #define shrenew(SHMEM, PTR, OLD_SIZE, NEW_SIZE) (PTR) = sh_renew_buf((SHMEM), (PTR), (OLD_SIZE), (NEW_SIZE), sizeof(*(PTR)))
 #else
 
-#define shrenew(SHMEM, PTR, OLD_SIZE, NEW_SIZE) { SHDEBUG(" Before renew , %p size %d \n", PTR, *(OLD_SIZE)); \
+#define shrenew(SHMEM, PTR, OLD_SIZE, NEW_SIZE) { SHDEBUG(" Before renew , %p \n", PTR ); \
  					   (PTR) = sh_renew_buf((SHMEM), (PTR), (OLD_SIZE), (NEW_SIZE), sizeof(*(PTR))); \
-    					   SHDEBUG(" After renew , %p size %ld \n",  PTR, (NEW_SIZE));\
+    					   SHDEBUG(" After renew , %p  \n",  PTR);\
 					 }
 
 
@@ -182,6 +184,15 @@ void shmem_int_sendrecv(gmx_domdec_shmem_buf_t* shmem, int* buf_s, int n_s,
 		int rank_s, int* buf_r, int n_r, int rank_r);
 void shmem_rvec_sendrecv(gmx_domdec_shmem_buf_t* shmem,rvec* buf_s, int n_s,
 		int rank_s, rvec* buf_r, int n_r, int rank_r);
+
+void shmem_rvec_sendrecv_nobuf(gmx_domdec_shmem_buf_t* shmem,rvec* buf_s, int n_s,
+		int rank_s, rvec* buf_r, int n_r, int rank_r);
+void shmem_real_sendrecv_nobuf(gmx_domdec_shmem_buf_t* shmem, real* buf_s, int n_s,
+		int rank_s, real* buf_r, int n_r, int rank_r);
+void shmem_int_sendrecv_nobuf(gmx_domdec_shmem_buf_t* shmem, int* buf_s, int n_s,
+		int rank_s, int* buf_r, int n_r, int rank_r);
+
+void shmem_sync_pair(gmx_domdec_shmem_buf_t* shmem, int rank_s, int rank_r) ;
 
 #endif /* GMX_SHMEM */
 

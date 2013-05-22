@@ -924,9 +924,16 @@ void dd_atom_spread_real(gmx_domdec_t *dd, real v[])
                 rbuf = &comm->vbuf2.v[0][0];
             }
             /* Send and receive the coordinates */
+#ifdef GMX_SHMEM_INPLACE
+            dd_sendrecv_real_off(dd, d, dddirBackward,
+                                 buf,  0, ind->nsend[nzone+1],
+                                 rbuf, 0, ind->nrecv[nzone+1]);
+#else
             dd_sendrecv_real(dd, d, dddirBackward,
                              buf,  ind->nsend[nzone+1],
                              rbuf, ind->nrecv[nzone+1]);
+#endif
+
             if (!cd->bInPlace)
             {
                 j = 0;

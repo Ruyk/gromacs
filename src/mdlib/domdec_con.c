@@ -195,8 +195,13 @@ static void dd_move_f_specat(gmx_domdec_t *dd, gmx_domdec_specat_comm_t *spac,
             spas = &spac->spas[d][0];
             n   -= spas->nrecv;
             /* Send and receive the coordinates */
+#ifdef GMX_SHMEM
+            dd_sendrecv_rvec_off(dd, d, dddirForward,
+            				     f,n, spas->nrecv, spac->vbuf, 0, spas->nsend);
+#else
             dd_sendrecv_rvec(dd, d, dddirForward,
                              f+n, spas->nrecv, spac->vbuf, spas->nsend);
+#endif
             /* Sum the buffer into the required forces */
             if (dd->bScrewPBC && dim == XX &&
                 (dd->ci[dim] == 0 ||
@@ -407,15 +412,25 @@ static void dd_move_x_specat(gmx_domdec_t *dd, gmx_domdec_specat_comm_t *spac,
             /* Send and receive the coordinates */
             if (nvec == 1)
             {
+#ifdef GMX_SHMEM
+            	dd_sendrecv_rvec_off(dd, d, dddirBackward,
+            	                    spac->vbuf, 0, spas->nsend, x0, n, spas->nrecv);
+#else
                 dd_sendrecv_rvec(dd, d, dddirBackward,
                                  spac->vbuf, spas->nsend, x0+n, spas->nrecv);
+#endif
             }
             else
             {
                 /* Communicate both vectors in one buffer */
                 rbuf = spac->vbuf2;
+#ifdef GMX_SHMEM
+                dd_sendrecv_rvec_off(dd, d, dddirBackward,
+                                 spac->vbuf, 0, 2*spas->nsend, rbuf, 0, 2*spas->nrecv);
+#else
                 dd_sendrecv_rvec(dd, d, dddirBackward,
                                  spac->vbuf, 2*spas->nsend, rbuf, 2*spas->nrecv);
+#endif
                 /* Split the buffer into the two vectors */
                 nr = spas[0].nrecv;
                 for (v = 0; v < 2; v++)

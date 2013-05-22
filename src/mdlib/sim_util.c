@@ -2018,7 +2018,8 @@ void do_constrain_first(FILE *fplog, gmx_constr_t constr,
     real            dt = ir->delta_t;
     real            dvdl_dum;
     rvec           *savex;
-#ifdef GMX_SHMEM_XXX
+
+#ifdef GMX_SHMEM
     sh_snew(savex, state->natoms);
 #else
     snew(savex, state->natoms);
@@ -2063,6 +2064,7 @@ void do_constrain_first(FILE *fplog, gmx_constr_t constr,
                   NULL, NULL, nrnb, econqVeloc,
                   ir->epc == epcMTTK, state->veta, state->veta);
     }
+    SHDEBUG(" First call to constraint \n");
     /* constrain the inital velocities at t-dt/2 */
     if (EI_STATE_VELOCITY(ir->eI) && ir->eI != eiVV)
     {
@@ -2103,11 +2105,14 @@ void do_constrain_first(FILE *fplog, gmx_constr_t constr,
             }
         }
     }
-#ifdef GMX_SHMEM_XXX
-    sh_sfree(savex);
+
+#ifdef GMX_SHMEM
+    // sh_sfree(savex);
+    shfree(savex);
 #else
     sfree(savex);
 #endif
+    SHDEBUG(" Constraints within sim_util END \n");
 }
 
 void calc_enervirdiff(FILE *fplog, int eDispCorr, t_forcerec *fr)

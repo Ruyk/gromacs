@@ -99,6 +99,21 @@ void dd_sendrecv2_rvec_off(const gmx_domdec_t *dd,
                        rvec *buf_r_fw, int off_r_fw, int n_r_fw,
                        rvec *buf_s_bw, int off_s_bw, int n_s_bw,
                        rvec *buf_r_bw, int off_r_bw, int n_r_bw);
+
+void dd_sendrecv_real_off(const gmx_domdec_t *dd,
+                      int ddimind, int direction,
+                      real *buf_s, int off_s, int n_s,
+                      real *buf_r, int off_r, int n_r);
+
+void dd_sendrecv_rvec_off(const gmx_domdec_t *dd,
+                      int ddimind, int direction,
+                      rvec *buf_s, int off_s, int n_s,
+                      rvec *buf_r, int off_r, int n_r);
+
+void dd_sendrecv_int_off(const gmx_domdec_t *dd,
+                      int ddimind, int direction,
+                      int *buf_s, int off_s, int n_s,
+                      int *buf_r, int off_r, int n_r);
 #endif
 
 /* The functions below perform the same operations as the MPI functions
