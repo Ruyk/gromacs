@@ -57,8 +57,8 @@
 
 void dd_sendrecv_int_off(const gmx_domdec_t *dd,
                       int ddimind, int direction,
-                      real *buf_s, int off_s, int n_s,
-                      real *buf_r, int off_r, int n_r)
+                      int *buf_s, int off_s, int n_s,
+                      int *buf_r, int off_r, int n_r)
 {
     int        rank_s, rank_r;
     static int off_l = -1;
