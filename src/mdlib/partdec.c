@@ -56,6 +56,10 @@
 #include "mvdata.h"
 #include "vec.h"
 
+#ifdef GMX_SHMEM
+#include <shmem.h>
+#endif
+
 typedef struct gmx_partdec_constraint
 {
     int                  left_range_receive;
@@ -91,6 +95,11 @@ typedef struct gmx_partdec {
     MPI_Request                    mpi_req_tx;
 #endif
     gmx_partdec_constraint_t *     constraints;
+
+#ifdef GMX_SHMEM
+    gmx_domdec_shmem_buf_t   *     shmem;
+#endif
+
 } gmx_partdec_t;
 
 
@@ -187,6 +196,15 @@ void gmx_tx_rx_real(const t_commrec *cr,
 {
 #ifndef GMX_MPI
     gmx_call("gmx_tx_rx_real");
+#elif defined(GMX_SHMEM)
+    int        send_nodeid, recv_nodeid;
+
+    send_nodeid = cr->pd->neighbor[send_dir];
+    recv_nodeid = cr->pd->neighbor[recv_dir];
+
+    shmem_real_sendrecv(cr->pd->shmem, send_buf, send_bufsize, send_nodeid,
+    					  recv_buf, recv_bufsize, recv_nodeid);
+
 #else
     int        send_nodeid, recv_nodeid;
     int        tx_tag = 0, rx_tag = 0;
@@ -228,6 +246,17 @@ void gmx_tx_rx_void(const t_commrec *cr,
 {
 #ifndef GMX_MPI
     gmx_call("gmx_tx_rx_void");
+#elif defined(GMX_SHMEM)
+    int send_nodeid, recv_nodeid;
+
+    gmx_domdec_shmem_buf_t * shmem = cr->pd->shmem;
+
+    send_nodeid = cr->pd->neighbor[send_dir];
+    recv_nodeid = cr->pd->neighbor[recv_dir];
+
+    shmem_void_sendrecv(shmem, send_buf, send_bufsize, send_nodeid,
+    				    recv_buf, recv_bufsize, recv_nodeid);
+
 #else
     int        send_nodeid, recv_nodeid;
     int        tx_tag = 0, rx_tag = 0;
@@ -640,6 +669,11 @@ static void init_partdec(FILE *fp, t_commrec *cr, t_block *cgs, int *multinr,
 #ifdef GMX_MPI
     pd->mpi_req_tx = MPI_REQUEST_NULL;
     pd->mpi_req_rx = MPI_REQUEST_NULL;
+#endif
+
+#ifdef GMX_SHMEM
+    snew(pd->shmem, 1);
+    init_shmem_buf(pd->shmem);
 #endif
 }
 
