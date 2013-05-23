@@ -731,7 +731,24 @@ void dd_move_x(gmx_domdec_t *dd, matrix box, rvec x[])
                     }
                 }
             }
-
+            /* Send and receive the coordinates */
+#ifdef GMX_SHMEM_INPLACE
+            if (cd->bInPlace)
+            {
+            	rbuf = x;
+            	dd_sendrecv_rvec(dd, d, dddirBackward,
+                              buf, 0, ind->nsend[nzone+1],
+                              rbuf, nat_tot, ind->nrecv[nzone+1]);
+            	rbuf = x + nat_tot;
+            }
+            else
+            {
+            	rbuf = comm->vbuf2.v
+            	dd_sendrecv_rvec(dd, d, dddirBackward,
+                              buf, 0, ind->nsend[nzone+1],
+                              rbuf, 0, ind->nrecv[nzone+1]);
+            }
+#else
             if (cd->bInPlace)
             {
                 rbuf = x + nat_tot;
@@ -740,10 +757,10 @@ void dd_move_x(gmx_domdec_t *dd, matrix box, rvec x[])
             {
                 rbuf = comm->vbuf2.v;
             }
-            /* Send and receive the coordinates */
             dd_sendrecv_rvec(dd, d, dddirBackward,
                              buf,  ind->nsend[nzone+1],
                              rbuf, ind->nrecv[nzone+1]);
+#endif
             if (!cd->bInPlace)
             {
                 j = 0;
@@ -819,9 +836,24 @@ void dd_move_f(gmx_domdec_t *dd, rvec f[], rvec *fshift)
                 }
             }
             /* Communicate the forces */
+#ifdef GMX_SHMEM_INPLACE
+            if (cd->bInPlace)
+            {
+            	dd_sendrecv_rvec_off(dd, d, dddirForward,
+                                 f, nat_tot, ind->nrecv[nzone+1],
+                                 buf,  0, ind->nsend[nzone+1]);
+            }
+            else
+            {
+            	dd_sendrecv_rvec_off(dd, d, dddirForward,
+            	                     comm->vbuf2.v, 0, ind->nrecv[nzone+1],
+            	                     buf,  0, ind->nsend[nzone+1]);
+            }
+#else
             dd_sendrecv_rvec(dd, d, dddirForward,
                              sbuf, ind->nrecv[nzone+1],
                              buf,  ind->nsend[nzone+1]);
+#endif
             index = ind->index;
             /* Add the received forces */
             n = 0;
@@ -1035,8 +1067,8 @@ static void dd_sendrecv_ddzone(const gmx_domdec_t *dd,
                                gmx_ddzone_t *buf_r, int n_r)
 {
 #define ZBS  DDZONECOMM_BUFSIZE
-    rvec vbuf_s[DDZONECOMM_MAXZONE*ZBS];
-    rvec vbuf_r[DDZONECOMM_MAXZONE*ZBS];
+    static rvec vbuf_s[DDZONECOMM_MAXZONE*ZBS];
+    static rvec vbuf_r[DDZONECOMM_MAXZONE*ZBS];
     int  i;
 
     for (i = 0; i < n_s; i++)
@@ -1052,10 +1084,15 @@ static void dd_sendrecv_ddzone(const gmx_domdec_t *dd,
         vbuf_s[i*ZBS+2][2] = 0;
     }
 
+#ifdef GMX_SHMEM_INPLACE
+    dd_sendrecv_rvec_off(dd, ddimind, direction,
+                         vbuf_s, 0, n_s*ZBS,
+                         vbuf_r, 0, n_r*ZBS);
+#else
     dd_sendrecv_rvec(dd, ddimind, direction,
                      vbuf_s, n_s*ZBS,
                      vbuf_r, n_r*ZBS);
-
+#endif
     for (i = 0; i < n_r; i++)
     {
         buf_r[i].min0 = vbuf_r[i*ZBS  ][0];
@@ -1078,7 +1115,7 @@ static void dd_move_cellx(gmx_domdec_t *dd, gmx_ddbox_t *ddbox,
     gmx_ddzone_t       buf_s[DDZONECOMM_MAXZONE];
     gmx_ddzone_t       buf_r[DDZONECOMM_MAXZONE];
     gmx_ddzone_t       buf_e[DDZONECOMM_MAXZONE];
-    rvec               extr_s[2], extr_r[2];
+    static rvec               extr_s[2], extr_r[2];
     rvec               dh;
     real               dist_d, c = 0, det;
     gmx_domdec_comm_t *comm;
@@ -1160,10 +1197,15 @@ static void dd_move_cellx(gmx_domdec_t *dd, gmx_ddbox_t *ddbox,
         {
             /* Communicate the extremes forward */
             bUse = (bPBC || dd->ci[dim] > 0);
-
+#ifdef GMX_SHMEM_INPLACE
+            dd_sendrecv_rvec_off(dd, d, dddirForward,
+                             extr_s, d, dd->ndim-d-1,
+                             extr_r, d, dd->ndim-d-1);
+#else
             dd_sendrecv_rvec(dd, d, dddirForward,
                              extr_s+d, dd->ndim-d-1,
                              extr_r+d, dd->ndim-d-1);
+#endif
 
             if (bUse)
             {
@@ -4953,7 +4995,7 @@ static void dd_redistribute_cg(FILE *fplog, gmx_large_int_t step,
 
             nvs = ncg[cdd] + nat[cdd]*nvec;
             i   = rbuf[0]  + rbuf[1] *nvec;
-#ifdef GMX_SHMEM_XXX
+#ifdef GMX_SHMEM
             vec_rvec_check_alloc_shmem(dd, &comm->vbuf, nvr+i);
 #else
             vec_rvec_check_alloc(&comm->vbuf, nvr+i);
@@ -8384,7 +8426,7 @@ static void setup_dd_communication(gmx_domdec_t *dd,
                         srenew(comm->buf_int, comm->nalloc_int);
                     }
 #endif
-#ifdef GMX_SHMEM_XXX
+#ifdef GMX_SHMEM
                     vec_rvec_check_alloc_shmem(dd, &comm->vbuf, ns1);
 #else
                     /* TODO: This should use the vec_rvec_check_alloc routine
@@ -8425,7 +8467,7 @@ static void setup_dd_communication(gmx_domdec_t *dd,
             /* The rvec buffer is also required for atom buffers of size nsend
              * in dd_move_x and dd_move_f.
              */
-#ifdef GMX_SHMEM_XXX
+#ifdef GMX_SHMEM
             vec_rvec_check_alloc_shmem(dd, &comm->vbuf, ind->nsend[nzone+1]);
 #else
             vec_rvec_check_alloc(&comm->vbuf, ind->nsend[nzone+1]);
@@ -8443,7 +8485,11 @@ static void setup_dd_communication(gmx_domdec_t *dd,
                         cd->bInPlace = FALSE;
                     }
                 }
+#ifdef GMX_SHMEM
+                /* In GMX_SHMEM buffers needs to be incremented in all PEs at the same time */
+#else
                 if (!cd->bInPlace)
+#endif
                 {
                     /* The int buffer is only required here for the cg indices */
 #ifdef GMX_SHMEM_XXX
@@ -8459,7 +8505,7 @@ static void setup_dd_communication(gmx_domdec_t *dd,
                      * of size nrecv in dd_move_x and dd_move_f.
                      */
                     i = max(cd->ind[0].nrecv[nzone+1], ind->nrecv[nzone+1]);
-#ifdef GMX_SHMEM_XXX
+#ifdef GMX_SHMEM
                     vec_rvec_check_alloc_shmem(dd, &comm->vbuf2, i);
 #else
                     vec_rvec_check_alloc(&comm->vbuf2, i);
@@ -9114,8 +9160,8 @@ static void dd_sort_state(gmx_domdec_t *dd, int ePBC,
             ncg_new = 0;
     }
     /* We alloc with the old size, since cgindex is still old */
-#ifdef GMX_SHMEM_XXX
-    vec_rvec_check_alloc_shmem(&dd->comm->vbuf, dd->cgindex[dd->ncg_home]);
+#ifdef GMX_SHMEM
+    vec_rvec_check_alloc_shmem(dd, &dd->comm->vbuf, dd->cgindex[dd->ncg_home]);
 #else
     vec_rvec_check_alloc(&dd->comm->vbuf, dd->cgindex[dd->ncg_home]);
 #endif
