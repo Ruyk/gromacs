@@ -2107,8 +2107,7 @@ void do_constrain_first(FILE *fplog, gmx_constr_t constr,
     }
 
 #ifdef GMX_SHMEM
-    // sh_sfree(savex);
-    shfree(savex);
+    sh_sfree(savex);
 #else
     sfree(savex);
 #endif
