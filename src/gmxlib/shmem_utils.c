@@ -275,9 +275,8 @@ void * sh_renew_buf(gmx_domdec_shmem_buf_t * shmem, void * buf, int * alloc, con
 	void * p;
 	int global_max;
 
-
 	SHDEBUG(" Before get max alloc \n");
-	global_max = get_max_alloc_shmem_dd(shmem, over_alloc_dd(new_size));
+	global_max = get_max_alloc_shmem_dd(shmem, over_alloc_shmem(new_size));
 	SHDEBUG(" After get max alloc \n");
 	if (global_max > (*alloc)) {
 		SHDEBUG(" Updating alloc (%d) to new global max (%d) with elem size %d \n", (*alloc), global_max, elem_size);
