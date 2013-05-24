@@ -1691,8 +1691,13 @@ double do_lbfgs(FILE *fplog, t_commrec *cr,
     /* Do_lbfgs is not completely updated like do_steep and do_cg,
      * so we free some memory again.
      */
+#ifdef GMX_SHMEM
+    sh_sfree(ems.s.x);
+    sh_sfree(ems.f);
+#else
     sfree(ems.s.x);
     sfree(ems.f);
+#endif
 
     xx = (real *)state->x;
     ff = (real *)f;
