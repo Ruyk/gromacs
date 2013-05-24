@@ -100,7 +100,7 @@ typedef struct {
 
 } gmx_domdec_shmem_buf_t;
 
-#define SHMEM_OVER_ALLOC_FAC 5
+#define SHMEM_OVER_ALLOC_FAC 1.19
 int over_alloc_shmem(int n);
 
 
