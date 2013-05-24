@@ -2475,6 +2475,14 @@ void init_forcerec(FILE              *fp,
                        (fr->adress_icor != eAdressICOff)
                        );
 
+#ifdef GMX_SHMEM
+   if (fr->cutoff_scheme == ecutsGROUP && !DOMAINDECOMP(cr))
+   {
+      fr->cg_nalloc = get_max_alloc_shmem(ncg_mtop(mtop));
+      sh_srenew(fr->cg_cm, fr->cg_nalloc);
+   }
+
+#else
     if (fr->cutoff_scheme == ecutsGROUP &&
         ncg_mtop(mtop) > fr->cg_nalloc && !DOMAINDECOMP(cr))
     {
@@ -2482,6 +2490,7 @@ void init_forcerec(FILE              *fp,
         fr->cg_nalloc = ncg_mtop(mtop);
         srenew(fr->cg_cm, fr->cg_nalloc);
     }
+#endif
     if (fr->shift_vec == NULL)
     {
         snew(fr->shift_vec, SHIFTS);
