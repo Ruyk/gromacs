@@ -195,7 +195,7 @@ static void dd_move_f_specat(gmx_domdec_t *dd, gmx_domdec_specat_comm_t *spac,
             spas = &spac->spas[d][0];
             n   -= spas->nrecv;
             /* Send and receive the coordinates */
-#ifdef GMX_SHMEM
+#ifdef GMX_SHMEM_INPLACE
             dd_sendrecv_rvec_off(dd, d, dddirForward,
             				     f,n, spas->nrecv, spac->vbuf, 0, spas->nsend);
 #else
@@ -412,7 +412,7 @@ static void dd_move_x_specat(gmx_domdec_t *dd, gmx_domdec_specat_comm_t *spac,
             /* Send and receive the coordinates */
             if (nvec == 1)
             {
-#ifdef GMX_SHMEM
+#ifdef GMX_SHMEM_INPLACE
             	dd_sendrecv_rvec_off(dd, d, dddirBackward,
             	                    spac->vbuf, 0, spas->nsend, x0, n, spas->nrecv);
 #else
@@ -424,7 +424,7 @@ static void dd_move_x_specat(gmx_domdec_t *dd, gmx_domdec_specat_comm_t *spac,
             {
                 /* Communicate both vectors in one buffer */
                 rbuf = spac->vbuf2;
-#ifdef GMX_SHMEM
+#ifdef GMX_SHMEM_INPLACE
                 dd_sendrecv_rvec_off(dd, d, dddirBackward,
                                  spac->vbuf, 0, 2*spas->nsend, rbuf, 0, 2*spas->nrecv);
 #else
