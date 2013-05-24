@@ -327,7 +327,11 @@ double do_md(FILE *fplog, t_commrec *cr, int nfile, const t_filenm fnm[],
     }
     else
     {
+#ifdef GMX_SHMEM
+    	sh_snew(f, top_global->natoms);
+#else
         snew(f, top_global->natoms);
+#endif
     }
 
     /* lambda Monte carlo random number generator  */
