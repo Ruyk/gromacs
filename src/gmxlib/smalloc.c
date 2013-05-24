@@ -237,6 +237,7 @@ void *save_realloc(const char *name, const char *file, int line, void *ptr,
         }
         else
         {
+        	SHDEBUG(" Realloc var %s from file %s:%d, ptr %p \n", name, file, line, ptr);
             p = realloc(ptr, (size_t)size);
         }
         if (p == NULL)
@@ -262,6 +263,7 @@ void save_free(const char *name, const char *file, int line, void *ptr)
 #endif
     if (ptr != NULL)
     {
+    	SHDEBUG(" Free var %s from file %s:%d, ptr %p \n", name, file, line, ptr);
         free(ptr);
     }
 }
@@ -407,6 +409,7 @@ void save_free_aligned(const char *name, const char *file, int line, void *ptr)
 
     if (NULL != ptr)
     {
+    	SHDEBUG(" Free var %s from file %s:%d, ptr %p \n", name, file, line, ptr);
 #ifdef GMX_OWN_MEMALIGN
         /* we get the pointer from just before the memaligned pointer */
         free = ((void**)ptr)[-1];
@@ -498,7 +501,7 @@ void *save_shmalloc(const char *name, const char *file, int line, size_t size)
 #ifdef DEBUG
     log_action(1, name, file, line, 1, size, p);
 #endif
-    SHDEBUG(" Outside shmalloc \n");
+    SHDEBUG(" Outside shmalloc %p\n", p);
     return p;
 }
 
@@ -507,8 +510,10 @@ void save_shfree(const char *name, const char *file, int line, void *ptr)
 #ifdef DEBUG
     log_action(0, name, file, line, 0, 0, ptr);
 #endif
+
     if (ptr != NULL)
     {
+    	SHDEBUG(" Free var %s from file %s:%d, ptr %p \n", name, file, line, ptr);
         shfree(ptr);
     }
 }
@@ -561,7 +566,7 @@ void *save_shrealloc(const char *name, const char *file, int line, void *ptr,
 #ifdef DEBUG
         log_action(1, name, file, line, 1, size, p);
 #endif
-        SHDEBUG(" Outside sh_srealloc \n");
+        SHDEBUG(" Outside sh_srealloc , ptr %p \n", p);
     }
     return p;
 }

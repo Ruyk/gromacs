@@ -278,13 +278,16 @@ void * sh_renew_buf(gmx_domdec_shmem_buf_t * shmem, void * buf, int * alloc, con
 	SHDEBUG(" Before get max alloc \n");
 	global_max = get_max_alloc_shmem_dd(shmem, new_size);
 	SHDEBUG(" After get max alloc \n");
-	if (global_max > (*alloc)) {
+	if (global_max > (*alloc))
+	{
 		SHDEBUG(" Updating alloc (%d) to new global max (%d) with elem size %d \n", (*alloc), global_max, elem_size);
 		(*alloc) = over_alloc_shmem(global_max);
 		sh_srenew(buf, (*alloc) * elem_size);
 		SHDEBUG(" After update to global max (%d) new buf ptr is %p \n", global_max, p);
-	} else {
-		SHDEBUG(" Not updating, global max (%d) same buf ptr is %p (alloc: %d) \n", global_max, p, global_max * elem_size);
+	}
+	else
+	{
+		SHDEBUG(" Not updating, global max (%d) same buf ptr is %p (alloc: %d) \n", global_max, buf, global_max * elem_size);
 	}
 	p = buf;
    	return p;
@@ -393,15 +396,19 @@ void shmem_rvec_sendrecv_nobuf(gmx_domdec_shmem_buf_t* shmem, rvec* buf_s, int n
 	shmem_int_p(&remote_size, n_r, rank_r);
 	shmem_sync_pair(shmem, rank_s, rank_r);
 
+	SHDEBUG(" SendRecv (S: %d,R: %d) using SHMEM (n_s %d, n_r %d) \n", rank_s,
+			rank_r, n_s, n_r);
+    SHDEBUG(" Remote size %d , buf_s %p buf_r %p \n", remote_size, buf_s, buf_r);
 
-	if (min(remote_size,n_s)) {
+	if (min(remote_size,n_s))
+	{
 		int i = 0;
 		// Put buf_is in rank_s
 		//               T       S     Len   Pe
 		shmem_float_put((real *) buf_r, (real *) buf_s, min(remote_size,n_s) * DIM,
 				rank_s);
-		SHDEBUG(" Putting n_s * srvec %ld data to rank_s %d \n",
-				n_s * sizeof(rvec), rank_s);
+		SHDEBUG(" Putting n_s  %d elements to rank_s %d \n",
+				min(remote_size,n_s), rank_s);
 	}
 	shmem_set_post(shmem, rank_s);
 	shmem_wait_post(shmem, _my_pe());
@@ -488,8 +495,8 @@ void shmem_rvec_sendrecv(gmx_domdec_shmem_buf_t* shmem, rvec* buf_s, int n_s,
 	shrenew(shmem, shmem->rvec_buf, &(shmem->rvec_alloc), n_s * sizeof(rvec));
 
 	shmem_lock(shmem, rank_s);
-	if (n_s) {
-		int i = 0;
+	if (n_s)
+	{
 		// Put buf_is in rank_s
 		//               T       S     Len   Pe
 		shmem_float_put((real *) shmem->rvec_buf, (real *) buf_s, n_s * DIM,
@@ -501,7 +508,8 @@ void shmem_rvec_sendrecv(gmx_domdec_shmem_buf_t* shmem, rvec* buf_s, int n_s,
 	shmem_set_post(shmem, rank_s);
 	SHDEBUG(" Wait flag %d \n", _my_pe());
 	shmem_wait_post(shmem, _my_pe());
-	if (n_r) {
+	if (n_r)
+	{
 		SHDEBUG(" Updating reception buffer \n");
 		memcpy(buf_r, shmem->rvec_buf, n_r * sizeof(rvec));
 	}

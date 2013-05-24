@@ -732,9 +732,10 @@ void dd_move_x(gmx_domdec_t *dd, matrix box, rvec x[])
                 }
             }
             /* Send and receive the coordinates */
-#ifdef GMX_SHMEM_INPLACE
+#ifdef GMX_SHMEM
             if (cd->bInPlace)
             {
+            	SHDEBUG(" In place \n");
             		dd_sendrecv_rvec_off(dd, d, dddirBackward,
                               buf, 0, ind->nsend[nzone+1],
                               x, nat_tot, ind->nrecv[nzone+1]);
@@ -742,6 +743,7 @@ void dd_move_x(gmx_domdec_t *dd, matrix box, rvec x[])
             }
             else
             {
+            	SHDEBUG(" Not in place \n");
             	rbuf = comm->vbuf2.v;
             	dd_sendrecv_rvec_off(dd, d, dddirBackward,
                               buf, 0, ind->nsend[nzone+1],
@@ -835,7 +837,7 @@ void dd_move_f(gmx_domdec_t *dd, rvec f[], rvec *fshift)
                 }
             }
             /* Communicate the forces */
-#ifdef GMX_SHMEM_INPLACE
+#ifdef GMX_SHMEM_XXX
             if (cd->bInPlace)
             {
             	dd_sendrecv_rvec_off(dd, d, dddirForward,

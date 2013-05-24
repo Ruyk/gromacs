@@ -144,16 +144,44 @@ void dd_sendrecv_rvec_off(const gmx_domdec_t *dd,
     static int off_l = -1;
     gmx_domdec_shmem_buf_t * shmem = dd->shmem;
 
+    SHDEBUG(" Sendrecv %p <=> %p \n", buf_s, buf_r);
+
     rank_s = dd->neighbor[ddimind][direction == dddirForward ? 0 : 1];
     rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
 
     shmem_barrier_all();
-
     SHDEBUG(" Interchange off_r %d with rank %d \n", off_r, rank_r);
-    shmem_int_sendrecv_nobuf(shmem, &off_r, 1, rank_s, &off_l, 1, rank_r);
-    SHDEBUG(" Result %d \n", off_l);
-    SHDEBUG(" Sendrecv rank_s %d rank_r %d \n", rank_s, rank_r);
-	shmem_rvec_sendrecv_nobuf(shmem, buf_s + off_s, n_s, rank_s, buf_r + off_l, n_r, rank_r);
+    // shmem_int_sendrecv(shmem, &off_r, 1, rank_s, &off_l, 1, rank_r);
+    // SHDEBUG(" Result %d \n", off_l);
+    // SHDEBUG(" Sendrecv rank_s %d rank_r %d \n", rank_s, rank_r);
+    // shmem_rvec_sendrecv_nobuf(shmem, buf_s + off_s, n_s, rank_s, buf_r + off_l, n_r, rank_r);
+	// shmem_getmem( (buf_r_fw + (off_r_fw)), buf_s_fw + (off_l), n_r_fw * sizeof(rvec), rank_bw);
+    // shmem_rvec_sendrecv(shmem, buf_s + off_s, n_s, rank_s, buf_r + off_r, n_r, rank_r);
+
+	// Tell rank_bw
+	shmem_int_p(&off_l, off_s, rank_s);
+	shmem_quiet();
+	SHDEBUG(" Waiting for fw to be != -1 \n")
+	shmem_int_wait(&off_l, -1);
+
+	/* Forward */
+	if (n_r)
+	{
+		// SHDEBUG(" Will get %d*%d=%d bytes from pe %d addr %p \n", n_r_fw, DIM, n_r_fw * sizeof(rvec), rank_bw, buf_s_fw)
+        		// off_l = off_l; // shmem_int_g(&off_fw, rank_bw);
+		// SHDEBUG(" The offset I have to use is %d  \n", off_l);
+		shmem_getmem( (buf_r + (off_r)), buf_s + (off_l), n_r * sizeof(rvec), rank_r);
+	}
+	shmem_set_done(shmem, rank_r);
+
+	shmem_wait_done(shmem, _my_pe());
+	shmem_clear_done(shmem, _my_pe());
+
+	shmem_int_p(&off_l, -1, rank_s);
+	shmem_quiet();
+	SHDEBUG(" Waiting for off_fw to be -1 \n")
+	shmem_int_wait_until(&off_l, SHMEM_CMP_LT, 0);
+
 
 }
 
@@ -413,7 +441,7 @@ void dd_sendrecv2_rvec(const gmx_domdec_t *dd,
 
 void dd_bcast(gmx_domdec_t *dd, int nbytes, void *data)
 {
-#ifdef GMX_SHMEM
+#ifdef GMX_SHMEM_XXX
 	static long pSync[_SHMEM_BCAST_SYNC_SIZE];
 	void * buf;
 	gmx_domdec_shmem_buf_t * shmem = dd->shmem;
@@ -462,7 +490,7 @@ void dd_bcast(gmx_domdec_t *dd, int nbytes, void *data)
 
 void dd_bcastc(gmx_domdec_t *dd, int nbytes, void *src, void *dest)
 {
-#ifdef GMX_SHMEM
+#ifdef GMX_SHMEM_XXX
 	static long pSync[_SHMEM_BCAST_SYNC_SIZE];
 	void * buf;
 	gmx_domdec_shmem_buf_t * shmem = dd->shmem;
@@ -512,7 +540,7 @@ void dd_bcastc(gmx_domdec_t *dd, int nbytes, void *src, void *dest)
 
 void dd_scatter(gmx_domdec_t *dd, int nbytes, void *src, void *dest)
 {
-#ifdef GMX_SHMEM
+#ifdef GMX_SHMEM_XXX
 	int i;
 	gmx_domdec_shmem_buf_t * shmem = dd->shmem;
 
@@ -547,7 +575,7 @@ void dd_scatter(gmx_domdec_t *dd, int nbytes, void *src, void *dest)
 
 void dd_gather(gmx_domdec_t *dd, int nbytes, void *src, void *dest)
 {
-#ifdef GMX_SHMEM
+#ifdef GMX_SHMEM_XXX
 	gmx_domdec_shmem_buf_t * shmem = dd->shmem;
 	int size;
 
@@ -573,7 +601,7 @@ void dd_scatterv(gmx_domdec_t *dd,
                  int *scounts, int *disps, void *sbuf,
                  int rcount, void *rbuf)
 {
-#ifdef GMX_SHMEM
+#ifdef GMX_SHMEM_XXX
 	int i, max_count;
 	gmx_domdec_shmem_buf_t * shmem = dd->shmem;
 	SHDEBUG(" ScatterV %p (rcount %d) \n", shmem->byte_buf, rcount);
@@ -644,7 +672,7 @@ void dd_gatherv(gmx_domdec_t *dd,
                 int scount, void *sbuf,
                 int *rcounts, int *disps, void *rbuf)
 {
-#ifdef GMX_SHMEM
+#ifdef GMX_SHMEM_XXX
 		int i, max_count;
 		gmx_domdec_shmem_buf_t * shmem = dd->shmem;
 		const int npes = _num_pes();
