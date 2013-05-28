@@ -1085,7 +1085,7 @@ static void dd_sendrecv_ddzone(const gmx_domdec_t *dd,
         vbuf_s[i*ZBS+2][2] = 0;
     }
 
-#ifdef GMX_SHMEM_INPLACE
+#ifdef GMX_SHMEM
     dd_sendrecv_rvec_off(dd, ddimind, direction,
                          vbuf_s, 0, n_s*ZBS,
                          vbuf_r, 0, n_r*ZBS);
@@ -1198,7 +1198,7 @@ static void dd_move_cellx(gmx_domdec_t *dd, gmx_ddbox_t *ddbox,
         {
             /* Communicate the extremes forward */
             bUse = (bPBC || dd->ci[dim] > 0);
-#ifdef GMX_SHMEM_INPLACE
+#ifdef GMX_SHMEM
             dd_sendrecv_rvec_off(dd, d, dddirForward,
                              extr_s, d, dd->ndim-d-1,
                              extr_r, d, dd->ndim-d-1);
@@ -5023,7 +5023,7 @@ static void dd_redistribute_cg(FILE *fplog, gmx_large_int_t step,
             vec_rvec_check_alloc(&comm->vbuf, nvr+i);
 #endif
             /* Communicate cgcm and state */
-#ifdef GMX_SHMEM_INPLACE
+#ifdef GMX_SHMEM
             dd_sendrecv_rvec_off(dd, d, dir,
                              comm->cgcm_state[cdd], 0, nvs,
                              comm->vbuf.v, nvr, i);
@@ -8624,7 +8624,7 @@ static void setup_dd_communication(gmx_domdec_t *dd,
             {
             	recv_vr = comm->vbuf2.v;
             }
-#ifdef GMX_SHMEM_INPLACE
+#ifdef GMX_SHMEM
 			if (cd->bInPlace)
 			{
 				dd_sendrecv_rvec_off(dd, dim_ind, dddirBackward,
