@@ -521,6 +521,23 @@ void shmem_rvec_sendrecv(gmx_domdec_shmem_buf_t* shmem, rvec* buf_s, int n_s,
 }
 
 
+void shmem_int_put_sync(gmx_domdec_shmem_buf_t * shmem, int * buf_r, int * buf_s, int n_s, int rank_s)
+{
+shmem_int_put(buf_r, buf_s, n_s, rank_s);
+shmem_quiet();
+
+shmem_set_post(shmem, rank_s);
+
+shmem_wait_post(shmem, _my_pe());
+shmem_clear_post(shmem, _my_pe());
+}
+
+void shmem_wait_for_previous_call(gmx_domdec_shmem_buf_t * shmem, int * call, int rank)
+{
+	int rcall;
+	while ( (rcall = shmem_int_g(call, rank)) != (*call) ) { usleep(10); };
+}
+
 
 void shmem_void_sendrecv(gmx_domdec_shmem_buf_t* shmem, void* buf_s, int n_s,
 		int rank_s, void* buf_r, int n_r, int rank_r)
@@ -547,6 +564,38 @@ void shmem_void_sendrecv(gmx_domdec_shmem_buf_t* shmem, void* buf_s, int n_s,
 	shmem_clear_done(shmem, _my_pe());
 	shmem_unlock(shmem, rank_s);
 }
+
+void shmem_getmem_sync( gmx_domdec_shmem_buf_t * shmem,
+		void *buf_s, int size_s, int rank_s,
+		void *buf_r, int size_r, int rank_r)
+{
+	if (size_r)
+	{
+		shmem_getmem( buf_r, buf_s, size_r, rank_r);
+	}
+	shmem_set_done(shmem, rank_r);
+
+	shmem_wait_done(shmem, _my_pe());
+	shmem_clear_done(shmem, _my_pe());
+}
+void shmem_put_offset(int * off_l, int off_s, int rank)
+{
+  shmem_int_p(off_l, off_s, rank);
+  shmem_quiet();
+  SHDEBUG(" Waiting for fw to be != -1 \n")
+  shmem_int_wait(off_l, -1);
+}
+
+
+
+void shmem_clear_offset(int * off_l, int rank)
+{
+shmem_int_p(off_l, -1, rank);
+shmem_quiet();
+SHDEBUG(" Waiting for off_fw to be -1 \n")
+shmem_int_wait_until(off_l, SHMEM_CMP_LT, 0);
+}
+
 
 
 #endif /* GMX_SHMEM */

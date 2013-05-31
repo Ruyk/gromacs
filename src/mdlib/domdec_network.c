@@ -123,15 +123,67 @@ void dd_sendrecv_real_off(const gmx_domdec_t *dd,
 {
     int        rank_s, rank_r;
     static int off_l = -1;
+    static int call = 1;
     gmx_domdec_shmem_buf_t * shmem = dd->shmem;
 
     rank_s = dd->neighbor[ddimind][direction == dddirForward ? 0 : 1];
     rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
 
-    shmem_barrier_all();
-    shmem_int_sendrecv_nobuf(shmem, &off_r, 1, rank_s, &off_l, 1, rank_r);
+    // shmem_barrier_all();
+    shmem_wait_for_previous_call(dd->shmem, &call, rank_s);
+
+    shmem_put_offset(&off_l, off_s, rank_s);
+    // shmem_int_sendrecv_nobuf(shmem, &off_r, 1, rank_s, &off_l, 1, rank_r);
+
+    shmem_wait_for_previous_call(dd->shmem, &call, rank_r);
 
 	shmem_real_sendrecv_nobuf(shmem, buf_s + off_s, n_s, rank_s, buf_r + off_l, n_r, rank_r);
+
+	shmem_clear_offset(&off_l, rank_s);
+
+	call++;
+}
+
+void dd_sendrecv_int_nobuf(const gmx_domdec_t *dd,
+		int ddimind, int direction,
+		int *buf_s, int n_s,
+		int *buf_r, int n_r)
+{
+	int        rank_s, rank_r;
+	gmx_domdec_shmem_buf_t * shmem = dd->shmem;
+	rank_s = dd->neighbor[ddimind][direction == dddirForward ? 0 : 1];
+	rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
+
+	shmem_int_put_sync(shmem, buf_r, buf_s, n_s, rank_s);
+}
+
+void dd_sendrecv_rvec_nobuf(const gmx_domdec_t *dd,
+		int ddimind, int direction,
+		rvec *buf_s, int n_s,
+		rvec *buf_r, int n_r)
+{
+	int        rank_s, rank_r;
+	gmx_domdec_shmem_buf_t * shmem = dd->shmem;
+	rank_s = dd->neighbor[ddimind][direction == dddirForward ? 0 : 1];
+	rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
+
+	shmem_getmem_sync(shmem, buf_s, n_s * sizeof(rvec), rank_s,
+			buf_r, n_r * sizeof(rvec), rank_r);
+
+}
+
+void dd_sendrecv_real_nobuf(const gmx_domdec_t *dd,
+		int ddimind, int direction,
+		real *buf_s, int n_s,
+		real *buf_r, int n_r)
+{
+	int        rank_s, rank_r;
+	gmx_domdec_shmem_buf_t * shmem = dd->shmem;
+	rank_s = dd->neighbor[ddimind][direction == dddirForward ? 0 : 1];
+	rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
+
+	shmem_getmem_sync(shmem, buf_s, n_s * sizeof(real), rank_s,
+			buf_r, n_r * sizeof(real), rank_r);
 
 }
 
@@ -142,88 +194,63 @@ void dd_sendrecv_rvec_off(const gmx_domdec_t *dd,
 {
     int        rank_s, rank_r;
     static int off_l = -1;
+    static int call = 1;
     gmx_domdec_shmem_buf_t * shmem = dd->shmem;
 
-    SHDEBUG(" Sendrecv %p <=> %p \n", buf_s, buf_r);
+
 
     rank_s = dd->neighbor[ddimind][direction == dddirForward ? 0 : 1];
     rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
 
-    shmem_barrier_all();
-    SHDEBUG(" Interchange off_r %d with rank %d \n", off_r, rank_r);
-    // shmem_int_sendrecv(shmem, &off_r, 1, rank_s, &off_l, 1, rank_r);
-    // SHDEBUG(" Result %d \n", off_l);
-    // SHDEBUG(" Sendrecv rank_s %d rank_r %d \n", rank_s, rank_r);
-    // shmem_rvec_sendrecv_nobuf(shmem, buf_s + off_s, n_s, rank_s, buf_r + off_l, n_r, rank_r);
-	// shmem_getmem( (buf_r_fw + (off_r_fw)), buf_s_fw + (off_l), n_r_fw * sizeof(rvec), rank_bw);
-    // shmem_rvec_sendrecv(shmem, buf_s + off_s, n_s, rank_s, buf_r + off_r, n_r, rank_r);
+    SHDEBUG(" Get from rank_r %d , ptr %p. Put off %d  to proc %d \n", rank_r, buf_s, off_s,  rank_s);
 
-	// Tell rank_bw
-	shmem_int_p(&off_l, off_s, rank_s);
-	shmem_quiet();
-	SHDEBUG(" Waiting for fw to be != -1 \n")
-	shmem_int_wait(&off_l, -1);
+    shmem_wait_for_previous_call(dd->shmem, &call, rank_s);
 
-	/* Forward */
-	if (n_r)
-	{
-		// SHDEBUG(" Will get %d*%d=%d bytes from pe %d addr %p \n", n_r_fw, DIM, n_r_fw * sizeof(rvec), rank_bw, buf_s_fw)
-        		// off_l = off_l; // shmem_int_g(&off_fw, rank_bw);
-		// SHDEBUG(" The offset I have to use is %d  \n", off_l);
-		shmem_getmem( (buf_r + (off_r)), buf_s + (off_l), n_r * sizeof(rvec), rank_r);
-	}
-	shmem_set_done(shmem, rank_r);
+    shmem_put_offset(&off_l, off_s, rank_s);
 
-	shmem_wait_done(shmem, _my_pe());
-	shmem_clear_done(shmem, _my_pe());
+    shmem_wait_for_previous_call(dd->shmem, &call, rank_r);
 
-	shmem_int_p(&off_l, -1, rank_s);
-	shmem_quiet();
-	SHDEBUG(" Waiting for off_fw to be -1 \n")
-	shmem_int_wait_until(&off_l, SHMEM_CMP_LT, 0);
+  	dd_sendrecv_rvec_nobuf(dd, ddimind, direction, buf_s + off_l, n_s,
+    		                 	buf_r + off_r, n_r);
+
+    shmem_clear_offset(&off_l, rank_s);
+
+    call++;
 
 
 }
 
-void dd_sendrecv_real(const gmx_domdec_t *dd,
-                      int ddimind, int direction,
-                      real *buf_s, int n_s,
-                      real *buf_r, int n_r)
-{
 #ifdef GMX_SHMEM
-    int        rank_s, rank_r;
-    gmx_domdec_shmem_buf_t * shmem = dd->shmem;
+void dd_sendrecv2_rvec_off(const gmx_domdec_t *dd,
+                       int ddimind,
+                       rvec *buf_s_fw, int off_s_fw, int n_s_fw,
+                       rvec *buf_r_fw, int off_r_fw, int n_r_fw,
+                       rvec *buf_s_bw, int off_s_bw, int n_s_bw,
+                       rvec *buf_r_bw, int off_r_bw, int n_r_bw)
+{
 
-    rank_s = dd->neighbor[ddimind][direction == dddirForward ? 0 : 1];
-    rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
+	int         rank_fw, rank_bw;
+	static int off_fw = -1;
+	static int off_bw = -1;
+	static int ncall = 0;
+	int off_l, nrcall;
+	gmx_domdec_shmem_buf_t * shmem = dd->shmem;
 
-	shmem_real_sendrecv(shmem, buf_s, n_s, rank_s, buf_r, n_r, rank_r);
-#elif defined(GMX_MPI)
-    int        rank_s, rank_r;
-    MPI_Status stat;
+	rank_fw = dd->neighbor[ddimind][0];
+	rank_bw = dd->neighbor[ddimind][1];
 
-    rank_s = dd->neighbor[ddimind][direction == dddirForward ? 0 : 1];
-    rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
+	SHDEBUG(" SendRecv2 (S1: %d,R1: %d) using SHMEM (n_s_fw %d, n_r_bw %d) \n",
+			rank_fw, rank_bw, n_s_fw, n_r_fw);
 
-    if (n_s && n_r)
-    {
-        MPI_Sendrecv(buf_s, n_s*sizeof(real), MPI_BYTE, rank_s, 0,
-                     buf_r, n_r*sizeof(real), MPI_BYTE, rank_r, 0,
-                     dd->mpi_comm_all, &stat);
-    }
-    else if (n_s)
-    {
-        MPI_Send(    buf_s, n_s*sizeof(real), MPI_BYTE, rank_s, 0,
-                     dd->mpi_comm_all);
-    }
-    else if (n_r)
-    {
-        MPI_Recv(    buf_r, n_r*sizeof(real), MPI_BYTE, rank_r, 0,
-                     dd->mpi_comm_all, &stat);
-    }
+	dd_sendrecv_rvec_off(dd, ddimind, dddirForward, buf_s_fw, off_s_fw, n_s_fw,
+			                      buf_r_fw, off_r_fw, n_r_fw);
 
-#endif
+	dd_sendrecv_rvec_off(dd, ddimind, dddirBackward, buf_s_bw, off_s_bw, n_s_bw,
+								  buf_r_bw, off_r_bw, n_r_bw);
+
+
 }
+#endif /* GMX_SHMEM */
 
 void dd_sendrecv_rvec(const gmx_domdec_t *dd,
                       int ddimind, int direction,
@@ -266,87 +293,6 @@ void dd_sendrecv_rvec(const gmx_domdec_t *dd,
 
 #endif
 }
-
-#ifdef GMX_SHMEM
-void dd_sendrecv2_rvec_off(const gmx_domdec_t *dd,
-                       int ddimind,
-                       rvec *buf_s_fw, int off_s_fw, int n_s_fw,
-                       rvec *buf_r_fw, int off_r_fw, int n_r_fw,
-                       rvec *buf_s_bw, int off_s_bw, int n_s_bw,
-                       rvec *buf_r_bw, int off_r_bw, int n_r_bw)
-{
-
-	int         rank_fw, rank_bw;
-	static int off_fw = -1;
-	static int off_bw = -1;
-	static int ncall = 0;
-	int off_l, nrcall;
-	gmx_domdec_shmem_buf_t * shmem = dd->shmem;
-
-	rank_fw = dd->neighbor[ddimind][0];
-	rank_bw = dd->neighbor[ddimind][1];
-
-	SHDEBUG(" SendRecv2 (S1: %d,R1: %d) using SHMEM (n_s_fw %d, n_r_bw %d) \n",
-			rank_fw, rank_bw, n_s_fw, n_r_fw);
-
-	shmem_barrier_all();
-	// off_fw = off_s_fw;
-	// off_bw = off_s_bw;
-	// shmem_barrier_all();
-
-  	// Tell rank_bw
-	shmem_int_p(&off_fw, off_s_fw, rank_fw);
-	shmem_quiet();
-	SHDEBUG(" Waiting for fw to be != -1 \n")
-	shmem_int_wait(&off_fw, -1);
-
-	/* Forward */
-	if (n_r_fw)
-	{
-		// SHDEBUG(" Will get %d*%d=%d bytes from pe %d addr %p \n", n_r_fw, DIM, n_r_fw * sizeof(rvec), rank_bw, buf_s_fw)
-        		off_l = off_fw; // shmem_int_g(&off_fw, rank_bw);
-		// SHDEBUG(" The offset I have to use is %d  \n", off_l);
-		shmem_getmem( (buf_r_fw + (off_r_fw)), buf_s_fw + (off_l), n_r_fw * sizeof(rvec), rank_bw);
-	}
-	shmem_set_done(shmem, rank_bw);
-
-	shmem_wait_done(shmem, _my_pe());
-	shmem_clear_done(shmem, _my_pe());
-
-	shmem_int_p(&off_fw, -1, rank_fw);
-	shmem_quiet();
-	SHDEBUG(" Waiting for off_fw to be -1 \n")
-	shmem_int_wait_until(&off_fw, SHMEM_CMP_LT, 0);
-
-	SHDEBUG(" Second SendRecv S2:%d R2:%d (n_s_bw %d, n_r_bw %d) \n",
-			rank_bw, rank_fw, n_s_bw, n_r_bw);
-
-	shmem_int_p(&off_bw, off_s_bw, rank_bw);
-	shmem_quiet();
-	SHDEBUG(" Waiting for bw to be != -1 \n")
-	shmem_int_wait(&off_bw, -1);
-
-	/* Backward */
-	if (n_r_bw)
-	{
-		// SHDEBUG(" Will get %d*%d=%d bytes from pe %d addr %p \n", n_r_bw, DIM, n_r_bw * sizeof(rvec), rank_fw, buf_s_bw)
-        		off_l = off_bw; // shmem_int_g(&off_bw, rank_fw);
-		shmem_getmem(buf_r_bw + (off_r_bw), (buf_s_bw + (off_l)), n_r_bw * sizeof(rvec), rank_fw);
-	}
-	SHDEBUG(" End of sendrecv2 \n");
-	shmem_set_done(shmem, rank_fw);
-
-	shmem_wait_done(shmem, _my_pe());
-	shmem_clear_done(shmem, _my_pe());
-
-	shmem_int_p(&off_bw, -1, rank_bw);
-	shmem_quiet();
-	SHDEBUG(" Waiting for off_bw to be -1 \n")
-	shmem_int_wait_until(&off_bw, SHMEM_CMP_LT, 0);
-
-
-}
-#endif /* GMX_SHMEM */
 
 void dd_sendrecv2_rvec(const gmx_domdec_t *dd,
                        int ddimind,
@@ -432,6 +378,47 @@ void dd_sendrecv2_rvec(const gmx_domdec_t *dd,
     }
 #endif
 }
+
+void dd_sendrecv_real(const gmx_domdec_t *dd,
+                      int ddimind, int direction,
+                      real *buf_s, int n_s,
+                      real *buf_r, int n_r)
+{
+#ifdef GMX_SHMEM
+    int        rank_s, rank_r;
+    gmx_domdec_shmem_buf_t * shmem = dd->shmem;
+
+    rank_s = dd->neighbor[ddimind][direction == dddirForward ? 0 : 1];
+    rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
+
+	shmem_real_sendrecv(shmem, buf_s, n_s, rank_s, buf_r, n_r, rank_r);
+#elif defined(GMX_MPI)
+    int        rank_s, rank_r;
+    MPI_Status stat;
+
+    rank_s = dd->neighbor[ddimind][direction == dddirForward ? 0 : 1];
+    rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
+
+    if (n_s && n_r)
+    {
+        MPI_Sendrecv(buf_s, n_s*sizeof(real), MPI_BYTE, rank_s, 0,
+                     buf_r, n_r*sizeof(real), MPI_BYTE, rank_r, 0,
+                     dd->mpi_comm_all, &stat);
+    }
+    else if (n_s)
+    {
+        MPI_Send(    buf_s, n_s*sizeof(real), MPI_BYTE, rank_s, 0,
+                     dd->mpi_comm_all);
+    }
+    else if (n_r)
+    {
+        MPI_Recv(    buf_r, n_r*sizeof(real), MPI_BYTE, rank_r, 0,
+                     dd->mpi_comm_all, &stat);
+    }
+
+#endif
+}
+
 
 /* IBM's BlueGene(/L) MPI_Bcast dereferences the data pointer
  * even when 0 == nbytes, so we protect calls to it on BlueGene.

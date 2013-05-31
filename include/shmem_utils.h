@@ -192,7 +192,17 @@ void shmem_real_sendrecv_nobuf(gmx_domdec_shmem_buf_t* shmem, real* buf_s, int n
 void shmem_int_sendrecv_nobuf(gmx_domdec_shmem_buf_t* shmem, int* buf_s, int n_s,
 		int rank_s, int* buf_r, int n_r, int rank_r);
 
+void shmem_getmem_sync( gmx_domdec_shmem_buf_t * shmem,
+            	                        void *buf_s, int size_s, int rank_s,
+            	                        void *buf_r, int size_r, int rank_r);
+
+void shmem_int_put_sync(gmx_domdec_shmem_buf_t * shmem, int * buf_r, int * buf_s, int n_s, int rank_s);
+
+void shmem_wait_for_previous_call(gmx_domdec_shmem_buf_t * shmem, int * call, int rank);
 void shmem_sync_pair(gmx_domdec_shmem_buf_t* shmem, int rank_s, int rank_r) ;
+
+void shmem_put_offset(int * off_l, int off_s, int rank);
+void shmem_clear_offset(int * off_l, int rank);
 
 #endif /* GMX_SHMEM */
 
