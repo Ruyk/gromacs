@@ -328,6 +328,7 @@ double do_md(FILE *fplog, t_commrec *cr, int nfile, const t_filenm fnm[],
     else
     {
 #ifdef GMX_SHMEM
+    	/* Do not need to compute the maximum here, it is the same in all PE's */
     	sh_snew(f, top_global->natoms);
 #else
         snew(f, top_global->natoms);

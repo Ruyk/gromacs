@@ -2020,6 +2020,7 @@ void do_constrain_first(FILE *fplog, gmx_constr_t constr,
     rvec           *savex;
 
 #ifdef GMX_SHMEM
+    /* natoms is the same in all PEs */
     sh_snew(savex, state->natoms);
 #else
     snew(savex, state->natoms);

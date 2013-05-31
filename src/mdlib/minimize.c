@@ -365,6 +365,7 @@ void init_em(FILE *fplog, const char *title,
         ems->s = *state_global;
 #ifdef GMX_SHMEM
         SHDEBUG(" Not using DD \n");
+        ems->s.nalloc = get_max_alloc_shmem(ems->s.nalloc);
         sh_snew(ems->s.x, ems->s.nalloc);
         sh_snew(ems->f, ems->s.nalloc);
 #else

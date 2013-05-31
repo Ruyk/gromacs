@@ -409,7 +409,6 @@ void save_free_aligned(const char *name, const char *file, int line, void *ptr)
 
     if (NULL != ptr)
     {
-    	SHDEBUG(" Free var %s from file %s:%d, ptr %p \n", name, file, line, ptr);
 #ifdef GMX_OWN_MEMALIGN
         /* we get the pointer from just before the memaligned pointer */
         free = ((void**)ptr)[-1];
@@ -435,7 +434,7 @@ void *save_shcalloc(const char *name, const char *file, int line,
     void *p;
     int global_max;
     SHDEBUG(" Entering shcalloc for var %s, ptr %p, nelem %ld, elsize %ld \n", name, p, nelem, elsize);
-	global_max = get_max_alloc_shmem(((size_t)nelem*(size_t)elsize));
+	global_max = ((size_t)nelem*(size_t)elsize);
     p = NULL;
     if (global_max == 0)
     {

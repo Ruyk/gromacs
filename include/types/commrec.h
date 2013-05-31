@@ -219,6 +219,7 @@ typedef struct {
 
     /* The number of home atoms */
     int   nat_home;
+
     /* The total number of atoms: home and received zones */
     int   nat_tot;
     /* Index from the local atoms to the global atoms */
@@ -243,6 +244,8 @@ typedef struct {
     /* shmem temporary buffers */
 
     gmx_domdec_shmem_buf_t * shmem;
+    /* Maximum size of allocated atoms across all ranks */
+    int   max_nat_home;
 #endif
 
 } gmx_domdec_t;

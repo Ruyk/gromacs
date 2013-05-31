@@ -837,18 +837,37 @@ void dd_move_f(gmx_domdec_t *dd, rvec f[], rvec *fshift)
                 }
             }
             /* Communicate the forces */
-#ifdef GMX_SHMEM_XXX
-            if (cd->bInPlace)
+#ifdef GMX_SHMEM
+            /* This sendrecv is dangerous. Since each PE may have different bInPlace values,
+             * and the sendrecv_rvec_off is implemented using get, it is possible than the destination
+             * PE gets the value from f but the real value is on buf.
+             * To avoid this problem we need to communicate the value of bInPlace first, and then
+             * do the comm itself.
+             */
             {
-            	dd_sendrecv_rvec_off(dd, d, dddirForward,
-                                 f, nat_tot, ind->nrecv[nzone+1],
-                                 buf,  0, ind->nsend[nzone+1]);
-            }
-            else
-            {
-            	dd_sendrecv_rvec_off(dd, d, dddirForward,
-            	                     comm->vbuf2.v, 0, ind->nrecv[nzone+1],
-            	                     buf,  0, ind->nsend[nzone+1]);
+            	static int shared_inplace[2] = {-1,-1};
+            	int tmp[2];
+            	static int call = 1;
+            	int rcall = 0;
+
+            	shmem_wait_for_previous_call(dd->shmem, &call, dd->neighbor[d][0]);
+
+            	tmp[0] = cd->bInPlace;
+            	tmp[1] = nat_tot;
+
+            	dd_sendrecv_int_nobuf(dd, d, dddirForward, tmp, 2, shared_inplace, 2);
+
+            	SHDEBUG(" Shared in place %d (cd->bInPlace %d) (f %p, sbuf %p, rank_s %d) \n", shared_inplace[0], cd->bInPlace, f, comm->vbuf2.v,dd->neighbor[d][0] );
+              {
+            	rvec *        	buf_s = shared_inplace[0]?f+shared_inplace[1]:comm->vbuf2.v;
+
+            	dd_sendrecv_rvec_nobuf(dd, d, dddirForward, buf_s, ind->nrecv[nzone+1],
+            			                   buf, ind->nsend[nzone+1]);
+
+            	}
+
+              	call++;
+
             }
 #else
             dd_sendrecv_rvec(dd, d, dddirForward,
@@ -1028,9 +1047,43 @@ void dd_atom_sum_real(gmx_domdec_t *dd, real v[])
                 }
             }
             /* Communicate the forces */
+#ifdef GMX_SHMEM
+            /* This sendrecv is dangerous. Since each PE may have different bInPlace values,
+             * and the sendrecv_rvec_off is implemented using get, it is possible than the destination
+             * PE gets the value from f but the real value is on buf.
+             * To avoid this problem we need to communicate the value of bInPlace first, and then
+             * do the comm itself.
+             */
+            {
+            	static int shared_inplace[2] = {-1,-1};
+            	int tmp[2];
+            	static int call = 1;
+            	int rcall = 0;
+
+            	shmem_wait_for_previous_call(dd->shmem, &call, dd->neighbor[d][0]);
+
+            	tmp[0] = cd->bInPlace;
+            	tmp[1] = nat_tot;
+
+            	dd_sendrecv_int_nobuf(dd, d, dddirForward, tmp, 2, shared_inplace, 2);
+
+            	SHDEBUG(" Shared in place %d (cd->bInPlace %d) (f %p, sbuf %p, rank_s %d) \n", shared_inplace[0], cd->bInPlace, v, comm->vbuf2.v,dd->neighbor[d][0] );
+            	{
+            		real *        	buf_s = shared_inplace[0]?v+shared_inplace[1]:comm->vbuf2.v;
+
+            		dd_sendrecv_real_nobuf(dd, d, dddirForward, buf_s, ind->nrecv[nzone+1],
+            				buf, ind->nsend[nzone+1]);
+
+            	}
+
+            	call++;
+
+            }
+#else
             dd_sendrecv_real(dd, d, dddirForward,
                              sbuf, ind->nrecv[nzone+1],
                              buf,  ind->nsend[nzone+1]);
+#endif
             index = ind->index;
             /* Add the received forces */
             n = 0;
@@ -2013,7 +2066,7 @@ static void dd_distribute_state(gmx_domdec_t *dd, t_block *cgs,
     dd_bcast(dd, ((state_local->nnhpres*nh)*sizeof(double)), state_local->nhpres_vxi);
 
 #ifdef GMX_SHMEM
-    dd_realloc_state_shmem(state_local, f, get_max_alloc_shmem_dd(dd->shmem, dd->nat_home));
+     dd_realloc_state_shmem(state_local, f, dd->max_nat_home);
 #else
     if (dd->nat_home > state_local->nalloc)
     {
@@ -2619,6 +2672,9 @@ static void rebuild_cgindex(gmx_domdec_t *dd,
 
     dd->ncg_home = state->ncg_gl;
     dd->nat_home = nat;
+#ifdef GMX_SHMEM
+    dd->max_nat_home = get_max_alloc_shmem_dd(dd->shmem, dd->nat_home);
+#endif
 
     set_zones_ncg_home(dd);
 }
@@ -4163,7 +4219,13 @@ static void get_cg_distribution(FILE *fplog, gmx_large_int_t step, gmx_domdec_t 
     gmx_domdec_master_t *ma = NULL;
     ivec                 npulse;
     int                  i, cg_gl;
+#ifdef GMX_SHMEM
+    int                 *ibuf;
+    static int           buf2[2] = { 0, 0 };
+    static int           max_nat_home = 0;
+#else
     int                 *ibuf, buf2[2] = { 0, 0 };
+#endif
     gmx_bool             bMaster = DDMASTER(dd);
     if (bMaster)
     {
@@ -4181,6 +4243,13 @@ static void get_cg_distribution(FILE *fplog, gmx_large_int_t step, gmx_domdec_t 
         {
             ma->ibuf[2*i]   = ma->ncg[i];
             ma->ibuf[2*i+1] = ma->nat[i];
+#ifdef GMX_SHMEM
+            /* Get the maximum number of particles across all PE */
+            if (max_nat_home < ma->nat[i])
+            {
+            	max_nat_home = ma->nat[i];
+            }
+#endif
         }
         ibuf = ma->ibuf;
     }
@@ -4192,6 +4261,14 @@ static void get_cg_distribution(FILE *fplog, gmx_large_int_t step, gmx_domdec_t 
 
     dd->ncg_home = buf2[0];
     dd->nat_home = buf2[1];
+#ifdef GMX_SHMEM
+
+    {
+    	SHDEBUG(" Broadcasting max_nat_home %d to all ranks \n", max_nat_home);
+    	dd_bcast(dd, sizeof(int), &max_nat_home);
+    	dd->max_nat_home = max_nat_home;
+    }
+#endif
     dd->ncg_tot  = dd->ncg_home;
     dd->nat_tot  = dd->nat_home;
     if (dd->ncg_home > dd->cg_nalloc || dd->cg_nalloc == 0)
@@ -4208,6 +4285,7 @@ static void get_cg_distribution(FILE *fplog, gmx_large_int_t step, gmx_domdec_t 
             ma->ibuf[dd->nnodes+i] = ma->index[i]*sizeof(int);
         }
     }
+
 
     dd_scatterv(dd,
                 DDMASTER(dd) ? ma->ibuf : NULL,
@@ -5038,7 +5116,7 @@ static void dd_redistribute_cg(FILE *fplog, gmx_large_int_t step,
         } /* for dir */
 
         /***** NOTE THAT: Each process will receive different charge groups, thus each buff. is different */
-#ifdef GMX_SHMEM
+#ifdef GMX_SHMEM_NOT_MAX_HOMEAT
         SHDEBUG(" Reallocation of charge groups, ncg_recv %d \n", ncg_recv);
         {
         	int tmp = 0;
@@ -5279,6 +5357,9 @@ static void dd_redistribute_cg(FILE *fplog, gmx_large_int_t step,
     }
     dd->ncg_home = home_pos_cg;
     dd->nat_home = home_pos_at;
+#ifdef GMX_SHMEM
+    dd->max_nat_home = get_max_alloc_shmem_dd(dd->shmem, dd->nat_home);
+#endif
 
     if (debug)
     {
@@ -8606,7 +8687,11 @@ static void setup_dd_communication(gmx_domdec_t *dd,
                             recv_i,        ind->nrecv[nzone]);
 
             /* Make space for cg_cm */
+#ifdef GMX_SHMEM
             dd_check_alloc_ncg(fr, state, f,  get_max_alloc_shmem_dd(dd->shmem,pos_cg + ind->nrecv[nzone]));
+#else
+            dd_check_alloc_ncg(fr, state, f, pos_cg + ind->nrecv[nzone]);
+#endif
             if (fr->cutoff_scheme == ecutsGROUP)
             {
                 cg_cm = fr->cg_cm;
@@ -9333,6 +9418,9 @@ static void dd_sort_state(gmx_domdec_t *dd, int ePBC,
     }
     /* Set the home atom number */
     dd->nat_home = dd->cgindex[dd->ncg_home];
+#ifdef GMX_SHMEM
+    dd->max_nat_home = get_max_alloc_shmem_dd(dd->shmem, dd->nat_home);
+#endif
 
     if (fr->cutoff_scheme == ecutsVERLET)
     {
