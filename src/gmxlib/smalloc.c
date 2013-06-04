@@ -237,7 +237,6 @@ void *save_realloc(const char *name, const char *file, int line, void *ptr,
         }
         else
         {
-        	SHDEBUG(" Realloc var %s from file %s:%d, ptr %p \n", name, file, line, ptr);
             p = realloc(ptr, (size_t)size);
         }
         if (p == NULL)
@@ -263,7 +262,6 @@ void save_free(const char *name, const char *file, int line, void *ptr)
 #endif
     if (ptr != NULL)
     {
-    	SHDEBUG(" Free var %s from file %s:%d, ptr %p \n", name, file, line, ptr);
         free(ptr);
     }
 }

@@ -1532,7 +1532,7 @@ void update_constraints(FILE             *fplog,
     tensor               vir_con;
     rvec                *vbuf, *xprime = NULL;
     int                  nth, th;
-    SHDEBUG(" Constraints within update IN \n");
+
     if (constr)
     {
         bDoConstr = TRUE;
@@ -1700,7 +1700,7 @@ void update_constraints(FILE             *fplog,
                     state->natoms, state->x, upd->xp, state->v, force);
     }
 /* ############# END the update of velocities and positions ######### */
-    SHDEBUG(" Constraints within update OUT \n");
+
 }
 
 void update_box(FILE             *fplog,

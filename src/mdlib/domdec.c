@@ -8601,7 +8601,6 @@ static void setup_dd_communication(gmx_domdec_t *dd,
             }
             ind->nsend[nzone]   = nsend;
             ind->nsend[nzone+1] = nat;
-            SHDEBUG(" Before sendrecv int \n");
             /* Communicate the number of cg's and atoms to receive */
             dd_sendrecv_int(dd, dim_ind, dddirBackward,
                             ind->nsend, nzone+2,
@@ -9705,7 +9704,11 @@ void dd_partition_system(FILE                *fplog,
         dd_make_local_cgs(dd, &top_local->cgs);
 
         /* Ensure that we have space for the new distribution */
+#ifdef GMX_SHMEM
         dd_check_alloc_ncg(fr, state_local, f,  get_max_alloc_shmem_dd(dd->shmem,dd->ncg_home));
+#else
+        dd_check_alloc_ncg(fr, state_local, f,  dd->ncg_home);
+#endif
 
         if (fr->cutoff_scheme == ecutsGROUP)
         {

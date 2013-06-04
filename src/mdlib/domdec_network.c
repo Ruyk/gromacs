@@ -55,31 +55,13 @@
 
 #define DDMASTERRANK(dd)   (dd->masterrank)
 
-void dd_sendrecv_int_off(const gmx_domdec_t *dd,
-                      int ddimind, int direction,
-                      int *buf_s, int off_s, int n_s,
-                      int *buf_r, int off_r, int n_r)
-{
-    int        rank_s, rank_r;
-    static int off_l = -1;
-    gmx_domdec_shmem_buf_t * shmem = dd->shmem;
-
-    rank_s = dd->neighbor[ddimind][direction == dddirForward ? 0 : 1];
-    rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
-
-    shmem_barrier_all();
-    shmem_int_sendrecv_nobuf(shmem, &off_r, 1, rank_s, &off_l, 1, rank_r);
-
-	shmem_int_sendrecv_nobuf(shmem, buf_s + off_s, n_s, rank_s, buf_r + off_l, n_r, rank_r);
-
-}
 
 void dd_sendrecv_int(const gmx_domdec_t *dd,
                      int ddimind, int direction,
                      int *buf_s, int n_s,
                      int *buf_r, int n_r)
 {
-#ifdef GMX_SHMEM
+#ifdef GMX_SHMEM_INT
 #warning " Replacing SendRecv int"
     int        rank_s, rank_r;
     gmx_domdec_shmem_buf_t * shmem = dd->shmem;
@@ -115,7 +97,7 @@ void dd_sendrecv_int(const gmx_domdec_t *dd,
 #endif
 }
 
-
+#ifdef GMX_SHMEM
 void dd_sendrecv_real_off(const gmx_domdec_t *dd,
                       int ddimind, int direction,
                       real *buf_s, int off_s, int n_s,
@@ -220,7 +202,7 @@ void dd_sendrecv_rvec_off(const gmx_domdec_t *dd,
 
 }
 
-#ifdef GMX_SHMEM
+
 void dd_sendrecv2_rvec_off(const gmx_domdec_t *dd,
                        int ddimind,
                        rvec *buf_s_fw, int off_s_fw, int n_s_fw,
