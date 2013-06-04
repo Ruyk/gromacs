@@ -58,6 +58,10 @@
 
 #ifdef GMX_SHMEM
 
+#define EVENT_NOT_ACTIVE (-1)
+
+#define EVENT_ACTIVE (1)
+
 void init_shmem_buf(gmx_domdec_shmem_buf_t * shmem)
 {
 
@@ -100,10 +104,20 @@ void init_shmem_buf(gmx_domdec_shmem_buf_t * shmem)
     sh_snew(shmem->max_alloc_pSync2, _SHMEM_REDUCE_SYNC_SIZE);
 
     /* Init p2p sync */
+
+#ifdef SHMEM_USE_EVENTS
     sh_snew(shmem->post_events, _num_pes());
     shmem_clear_event(shmem->post_events + _my_pe());
     sh_snew(shmem->done_events, _num_pes());
     shmem_clear_event(shmem->done_events + _my_pe());
+#else
+    sh_snew(shmem->post_events, 1);
+    sh_snew(shmem->done_events, 1);
+    shmem->post_events[0] = EVENT_NOT_ACTIVE;
+    shmem->done_events[0] = EVENT_NOT_ACTIVE;
+#endif
+
+
     /* Init locks */
     sh_snew(shmem->lock, _num_pes());
     shmem_clear_lock(shmem->lock + _my_pe());
@@ -140,50 +154,84 @@ void done_shmem_buf(gmx_domdec_shmem_buf_t * shmem)
 void shmem_set_post      (gmx_domdec_shmem_buf_t * shmem, int pe)
 {
 	SHDEBUG(" Setting post on %d \n", pe);
+
+#ifdef SHMEM_USE_EVENTS
 	shmem_quiet();
 	shmem_set_event(shmem->post_events + pe);
+#else
+	shmem_long_p(shmem->post_events, EVENT_ACTIVE, pe);
+	shmem_quiet();
+#endif
 }
 
 void shmem_clear_post    (gmx_domdec_shmem_buf_t * shmem, int pe)
 {
-	shmem_quiet();
+
 	SHDEBUG(" Clearing post on %d \n", pe);
+#ifdef SHMEM_USE_EVENTS
+	shmem_quiet();
 	shmem_clear_event(shmem->post_events + pe);
+#else
+	shmem_fence();
+	shmem->post_events[0] = EVENT_NOT_ACTIVE;
+#endif
 }
 
 void shmem_wait_post     (gmx_domdec_shmem_buf_t * shmem, int pe)
 {
+#ifdef SHMEM_USE_EVENTS
 	shmem_quiet();
 	SHDEBUG(" Waiting for post on %d \n", pe);
 	shmem_wait_event(shmem->post_events + pe);
 	SHDEBUG(" Posted on %d \n", pe);
+#else
+	shmem_fence();
+	shmem_long_wait(shmem->post_events, EVENT_NOT_ACTIVE);
+#endif
 }
 
 void shmem_wait_done     (gmx_domdec_shmem_buf_t * shmem, int pe)
 {
+#ifdef SHMEM_USE_EVENTS
 	SHDEBUG(" Waiting for done on %d \n", pe);
 	shmem_quiet();
 	shmem_wait_event(shmem->done_events + pe);
 	SHDEBUG(" Received done on %d \n", pe);
+#else
+	shmem_fence();
+	shmem_long_wait(shmem->done_events, EVENT_NOT_ACTIVE);
+#endif
 }
 
 void shmem_set_done     (gmx_domdec_shmem_buf_t * shmem, int pe)
 {
+#ifdef SHMEM_USE_EVENTS
 	SHDEBUG(" Setting done on %d \n", pe);
 	shmem_quiet();
 	shmem_set_event(shmem->done_events + pe);
+#else
+	shmem_long_p(shmem->done_events, EVENT_ACTIVE, pe);
+	shmem_quiet();
+#endif
 }
 
 void shmem_clear_done  (gmx_domdec_shmem_buf_t * shmem, int pe)
 {
+#ifdef SHMEM_USE_EVENTS
 	SHDEBUG(" Clearing done on %d \n", pe);
 	shmem_clear_event(shmem->done_events + pe);
+#else
+	shmem_fence();
+	shmem->done_events[0] = EVENT_NOT_ACTIVE;
+#endif
 }
 
+#ifdef USE_SHMEM_EVENTS
 gmx_bool shmem_is_posted(gmx_domdec_shmem_buf_t * shmem, int pe)
 {
 	return shmem_test_event(shmem->post_events + pe);
 }
+#endif
 
 
 /* Lock handling
