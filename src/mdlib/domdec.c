@@ -667,7 +667,7 @@ void dd_move_x(gmx_domdec_t *dd, matrix box, rvec x[])
     cgindex = dd->cgindex;
 
     buf = comm->vbuf.v;
-
+SHDEBUG("Move X \n");
     nzone   = 1;
     nat_tot = dd->nat_home;
     for (d = 0; d < dd->ndim; d++)
@@ -845,7 +845,7 @@ void dd_move_f(gmx_domdec_t *dd, rvec f[], rvec *fshift)
              * do the comm itself.
              */
             {
-            	static int shared_inplace[2] = {-1,-1};
+            	static int rparams[2] = { -1,-1 };
             	int tmp[2];
             	static int call = 1;
             	int rcall = 0;
@@ -855,11 +855,11 @@ void dd_move_f(gmx_domdec_t *dd, rvec f[], rvec *fshift)
             	tmp[0] = cd->bInPlace;
             	tmp[1] = nat_tot;
 
-            	dd_sendrecv_int_nobuf(dd, d, dddirForward, tmp, 2, shared_inplace, 2);
+            	dd_sendrecv_int_nobuf(dd, d, dddirForward, tmp, 2, rparams, 2);
 
-            	SHDEBUG(" Shared in place %d (cd->bInPlace %d) (f %p, sbuf %p, rank_s %d) \n", shared_inplace[0], cd->bInPlace, f, comm->vbuf2.v,dd->neighbor[d][0] );
+            	SHDEBUG(" Shared in place %d (cd->bInPlace %d) (f %p, sbuf %p, rank_s %d) \n", rparams[0], cd->bInPlace, f, comm->vbuf2.v,dd->neighbor[d][0] );
               {
-            	rvec *        	buf_s = shared_inplace[0]?f+shared_inplace[1]:comm->vbuf2.v;
+            	rvec *        	buf_s = rparams[0]?f+rparams[1]:comm->vbuf2.v;
 
             	dd_sendrecv_rvec_nobuf(dd, d, dddirForward, buf_s, ind->nrecv[nzone+1],
             			                   buf, ind->nsend[nzone+1]);
@@ -1069,7 +1069,7 @@ void dd_atom_sum_real(gmx_domdec_t *dd, real v[])
 
             	SHDEBUG(" Shared in place %d (cd->bInPlace %d) (f %p, sbuf %p, rank_s %d) \n", shared_inplace[0], cd->bInPlace, v, comm->vbuf2.v,dd->neighbor[d][0] );
             	{
-            		real *        	buf_s = shared_inplace[0]?v+shared_inplace[1]:comm->vbuf2.v;
+            		real *        	buf_s = (shared_inplace[0])?(v+shared_inplace[1]):&comm->vbuf2.v[0][0];
 
             		dd_sendrecv_real_nobuf(dd, d, dddirForward, buf_s, ind->nrecv[nzone+1],
             				buf, ind->nsend[nzone+1]);

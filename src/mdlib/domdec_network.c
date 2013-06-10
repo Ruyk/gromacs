@@ -136,7 +136,18 @@ void dd_sendrecv_int_nobuf(const gmx_domdec_t *dd,
 	rank_s = dd->neighbor[ddimind][direction == dddirForward ? 0 : 1];
 	rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
 
-	shmem_int_put_sync(shmem, buf_r, buf_s, n_s, rank_s);
+	// shmem_int_put_sync(shmem, buf_r, buf_s, n_s, rank_s);
+	if (n_s)
+	{
+		shmem_int_put(buf_r, buf_s, n_s, rank_s);
+		shmem_quiet();
+	}
+
+	shmem_set_post(shmem, rank_s);
+
+	shmem_wait_post(shmem, _my_pe());
+	shmem_clear_post(shmem, _my_pe());
+
 }
 
 void dd_sendrecv_rvec_nobuf(const gmx_domdec_t *dd,
@@ -214,22 +225,83 @@ void dd_sendrecv2_rvec_off(const gmx_domdec_t *dd,
 	int         rank_fw, rank_bw;
 	static int off_fw = -1;
 	static int off_bw = -1;
-	static int ncall = 0;
-	int off_l, nrcall;
+	static int rank_fw_ready = -1;
+	static int rank_bw_ready = -1;
+	int nrcall;
 	gmx_domdec_shmem_buf_t * shmem = dd->shmem;
+	static int call = 0;
+
 
 	rank_fw = dd->neighbor[ddimind][0];
 	rank_bw = dd->neighbor[ddimind][1];
 
-	SHDEBUG(" SendRecv2 (S1: %d,R1: %d) using SHMEM (n_s_fw %d, n_r_bw %d) \n",
-			rank_fw, rank_bw, n_s_fw, n_r_fw);
+	SHDEBUG(" SendRecv2 (S1: %d,R1: %d) using SHMEM (n_s_fw %d, n_r_bw %d) call %d \n",
+			rank_fw, rank_bw, n_s_fw, n_r_fw, call);
 
-	dd_sendrecv_rvec_off(dd, ddimind, dddirForward, buf_s_fw, off_s_fw, n_s_fw,
+	/* dd_sendrecv_rvec_off(dd, ddimind, dddirForward, buf_s_fw, off_s_fw, n_s_fw,
 			                      buf_r_fw, off_r_fw, n_r_fw);
+			                      */
 
-	dd_sendrecv_rvec_off(dd, ddimind, dddirBackward, buf_s_bw, off_s_bw, n_s_bw,
-								  buf_r_bw, off_r_bw, n_r_bw);
+  //  shmem_barrier_all();
+    shmem_wait_for_previous_call(dd->shmem, &call, rank_fw);
+    shmem_wait_for_previous_call(dd->shmem, &call, rank_bw);
 
+    shmem_int_p(&off_fw, off_s_fw, rank_fw);
+    shmem_int_p(&off_bw, off_s_bw, rank_bw);
+    shmem_quiet();
+
+
+    while ( (((volatile int) off_fw) == -1) || (((volatile int) off_bw) == -1) )
+    		{
+    			usleep(10);
+    		}
+    // shmem_barrier_all();
+
+
+    /* Forward */
+	  		if (n_r_fw)
+	  			{
+	  				shmem_getmem( buf_r_fw + off_r_fw, buf_s_fw + off_fw, n_r_fw * sizeof(rvec), rank_bw);
+	  			}
+	  		shmem_int_p(&rank_fw_ready, 1, rank_bw);
+	  		shmem_quiet();
+    /* Backward */
+	    if (n_r_bw)
+   	  			{
+   	  				shmem_getmem( buf_r_bw + off_r_bw, buf_s_fw + off_bw, n_r_bw * sizeof(rvec), rank_fw);
+   	  			}
+
+	    shmem_int_p(&rank_bw_ready, 1, rank_fw);
+	    shmem_quiet();
+
+
+	    while ( ((volatile int) rank_fw_ready) != 1  || (((volatile int) rank_bw_ready) != 1) )
+	    	{
+	    	usleep(10);
+	    	}
+
+	  //  shmem_barrier_all();
+
+
+	/*   shmem_int_p(&off_fw, -1, rank_fw);
+	    shmem_int_p(&off_bw, -1, rank_bw);
+	    shmem_quiet();
+
+
+	   while ( (((volatile int) off_fw) != -1) || (((volatile int) off_bw) != -1) )
+	    		{
+	    			shmem_fence();
+	    		}
+	   shmem_barrier_all(); */
+
+       off_fw = -1;
+       off_bw = -1;
+	   rank_fw_ready = -1;
+	   rank_bw_ready = -1;
+
+	   call++;
+	   SHDEBUG(" END OF SendRecv2 (S1: %d,R1: %d) using SHMEM (n_s_fw %d, n_r_bw %d) call %d \n",
+	   			rank_fw, rank_bw, n_s_fw, n_r_fw, call);
 
 }
 #endif /* GMX_SHMEM */
