@@ -62,6 +62,7 @@
 
 #define EVENT_ACTIVE (1)
 
+
 void init_shmem_buf(gmx_domdec_shmem_buf_t * shmem)
 {
 
@@ -186,7 +187,11 @@ void shmem_wait_post     (gmx_domdec_shmem_buf_t * shmem, int pe)
 	SHDEBUG(" Posted on %d \n", pe);
 #else
 	shmem_fence();
-	shmem_long_wait(shmem->post_events, EVENT_NOT_ACTIVE);
+	// shmem_long_wait(shmem->post_events, EVENT_NOT_ACTIVE);
+	while ( ((volatile long) shmem->post_events[0]) == EVENT_NOT_ACTIVE )
+	{
+		usleep(10);
+	}
 #endif
 }
 
@@ -199,7 +204,13 @@ void shmem_wait_done     (gmx_domdec_shmem_buf_t * shmem, int pe)
 	SHDEBUG(" Received done on %d \n", pe);
 #else
 	shmem_fence();
-	shmem_long_wait(shmem->done_events, EVENT_NOT_ACTIVE);
+	// shmem_long_wait(shmem->done_events, EVENT_NOT_ACTIVE);
+
+	while ( ((volatile long) shmem->done_events[0]) == EVENT_NOT_ACTIVE )
+	{
+		usleep(10);
+	}
+
 #endif
 }
 
