@@ -152,7 +152,7 @@ int round_to_next_multiple(int nbytes, int type_size);
  * ========================
  *   Computes the maximum value of memory requested across PEs
  */
-int get_max_alloc_shmem_dd(gmx_domdec_shmem_buf_t * shmem, int local_value);
+int shmem_get_max_alloc(gmx_domdec_shmem_buf_t * shmem, int local_value);
 int get_max_alloc_shmem   (int local_value);
 
 /* sh_renew_buf
@@ -195,7 +195,7 @@ void shmem_real_sendrecv_nobuf(gmx_domdec_shmem_buf_t* shmem, real* buf_s, int n
 void shmem_int_sendrecv_nobuf(gmx_domdec_shmem_buf_t* shmem, int* buf_s, int n_s,
 		int rank_s, int* buf_r, int n_r, int rank_r);
 
-void shmem_getmem_sync( gmx_domdec_shmem_buf_t * shmem,
+void shmem_sendrecv_nobuf( gmx_domdec_shmem_buf_t * shmem,
             	                        void *buf_s, int size_s, int rank_s,
             	                        void *buf_r, int size_r, int rank_r);
 

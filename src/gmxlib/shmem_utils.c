@@ -300,7 +300,7 @@ int get_max_alloc_shmem(int local_value)
    return global_max;
 }
 
-int get_max_alloc_shmem_dd(gmx_domdec_shmem_buf_t * shmem, int local_value)
+int shmem_get_max_alloc(gmx_domdec_shmem_buf_t * shmem, int local_value)
 {
 	static int global_max = 0;
 	static int call = 0;
@@ -335,7 +335,7 @@ void * sh_renew_buf(gmx_domdec_shmem_buf_t * shmem, void * buf, int * alloc, con
 	int global_max;
 
 	SHDEBUG(" Before get max alloc \n");
-	global_max = get_max_alloc_shmem_dd(shmem, new_size);
+	global_max = shmem_get_max_alloc(shmem, new_size);
 	SHDEBUG(" After get max alloc \n");
 	if (global_max > (*alloc))
 	{
@@ -624,7 +624,7 @@ void shmem_void_sendrecv(gmx_domdec_shmem_buf_t* shmem, void* buf_s, int n_s,
 	shmem_unlock(shmem, rank_s);
 }
 
-void shmem_getmem_sync( gmx_domdec_shmem_buf_t * shmem,
+void shmem_sendrecv_nobuf( gmx_domdec_shmem_buf_t * shmem,
 		void *buf_s, int size_s, int rank_s,
 		void *buf_r, int size_r, int rank_r)
 {

@@ -2672,7 +2672,7 @@ static void rebuild_cgindex(gmx_domdec_t *dd,
     dd->ncg_home = state->ncg_gl;
     dd->nat_home = nat;
 #ifdef GMX_SHMEM
-    dd->max_nat_home = get_max_alloc_shmem_dd(dd->shmem, dd->nat_home);
+    dd->max_nat_home = shmem_get_max_alloc(dd->shmem, dd->nat_home);
 #endif
 
     set_zones_ncg_home(dd);
@@ -5125,10 +5125,10 @@ static void dd_redistribute_cg(FILE *fplog, gmx_large_int_t step,
         		tmp += (comm->buf_int[cg*DD_CGIBS+1] & DD_FLAG_NRCG);
         	}
         	SHDEBUG(" Will realloc state with home_post_at+tmp %d (h_p_a %d, tmp %d) \n", home_pos_at, home_pos_at, tmp);
-        	dd_realloc_state_shmem(state, f,  get_max_alloc_shmem_dd(dd->shmem,home_pos_at+tmp));
+        	dd_realloc_state_shmem(state, f,  shmem_get_max_alloc(dd->shmem,home_pos_at+tmp));
         	SHDEBUG(" Successfully reallocated state with home_pos_at+tmp %d (h_p_a %d, tmp %d) \n", home_pos_at+tmp, home_pos_at, tmp);
         	/* Copy the state from the buffer */
-        	dd_check_alloc_ncg(fr, state, f, get_max_alloc_shmem_dd(dd->shmem, home_pos_cg+ncg_recv));
+        	dd_check_alloc_ncg(fr, state, f, shmem_get_max_alloc(dd->shmem, home_pos_cg+ncg_recv));
         	SHDEBUG(" After dd_check_alloc_ncg , home_pos %d tmp %d \n", home_pos_at, tmp);
         }
 #endif
@@ -5357,7 +5357,7 @@ static void dd_redistribute_cg(FILE *fplog, gmx_large_int_t step,
     dd->ncg_home = home_pos_cg;
     dd->nat_home = home_pos_at;
 #ifdef GMX_SHMEM
-    dd->max_nat_home = get_max_alloc_shmem_dd(dd->shmem, dd->nat_home);
+    dd->max_nat_home = shmem_get_max_alloc(dd->shmem, dd->nat_home);
 #endif
 
     if (debug)
@@ -8686,7 +8686,7 @@ static void setup_dd_communication(gmx_domdec_t *dd,
 
             /* Make space for cg_cm */
 #ifdef GMX_SHMEM
-            dd_check_alloc_ncg(fr, state, f,  get_max_alloc_shmem_dd(dd->shmem,pos_cg + ind->nrecv[nzone]));
+            dd_check_alloc_ncg(fr, state, f,  shmem_get_max_alloc(dd->shmem,pos_cg + ind->nrecv[nzone]));
 #else
             dd_check_alloc_ncg(fr, state, f, pos_cg + ind->nrecv[nzone]);
 #endif
@@ -9417,7 +9417,7 @@ static void dd_sort_state(gmx_domdec_t *dd, int ePBC,
     /* Set the home atom number */
     dd->nat_home = dd->cgindex[dd->ncg_home];
 #ifdef GMX_SHMEM
-    dd->max_nat_home = get_max_alloc_shmem_dd(dd->shmem, dd->nat_home);
+    dd->max_nat_home = shmem_get_max_alloc(dd->shmem, dd->nat_home);
 #endif
 
     if (fr->cutoff_scheme == ecutsVERLET)
@@ -9704,7 +9704,7 @@ void dd_partition_system(FILE                *fplog,
 
         /* Ensure that we have space for the new distribution */
 #ifdef GMX_SHMEM
-        dd_check_alloc_ncg(fr, state_local, f,  get_max_alloc_shmem_dd(dd->shmem,dd->ncg_home));
+        dd_check_alloc_ncg(fr, state_local, f,  shmem_get_max_alloc(dd->shmem,dd->ncg_home));
 #else
         dd_check_alloc_ncg(fr, state_local, f,  dd->ncg_home);
 #endif
@@ -9989,7 +9989,7 @@ void dd_partition_system(FILE                *fplog,
      */
     state_local->natoms = comm->nat[ddnatNR-1];
 #ifdef GMX_SHMEM
-    dd_realloc_state_shmem(state_local, f,  get_max_alloc_shmem_dd(dd->shmem,state_local->natoms));
+    dd_realloc_state_shmem(state_local, f,  shmem_get_max_alloc(dd->shmem,state_local->natoms));
 #else
     if (state_local->natoms > state_local->nalloc)
     {

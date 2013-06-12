@@ -160,7 +160,7 @@ void dd_sendrecv_rvec_nobuf(const gmx_domdec_t *dd,
 	rank_s = dd->neighbor[ddimind][direction == dddirForward ? 0 : 1];
 	rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
 
-	shmem_getmem_sync(shmem, buf_s, n_s * sizeof(rvec), rank_s,
+	shmem_sendrecv_nobuf(shmem, buf_s, n_s * sizeof(rvec), rank_s,
 			buf_r, n_r * sizeof(rvec), rank_r);
 
 }
@@ -175,7 +175,7 @@ void dd_sendrecv_real_nobuf(const gmx_domdec_t *dd,
 	rank_s = dd->neighbor[ddimind][direction == dddirForward ? 0 : 1];
 	rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
 
-	shmem_getmem_sync(shmem, buf_s, n_s * sizeof(real), rank_s,
+	shmem_sendrecv_nobuf(shmem, buf_s, n_s * sizeof(real), rank_s,
 			buf_r, n_r * sizeof(real), rank_r);
 
 }
