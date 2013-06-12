@@ -208,8 +208,6 @@ void dd_sendrecv_rvec_off(const gmx_domdec_t *dd,
 
     shmem_wait_for_previous_call(dd->shmem, &call, rank_r);
 
-	/*shmem_getmem_sync(shmem, buf_s + off_l, n_s * sizeof(rvec), rank_s,
-			buf_r + off_r, n_r * sizeof(rvec), rank_r);*/
 	if (n_r)
 	{
 		shmem_getmem( buf_r + off_r, buf_s + off_l, n_r * sizeof(rvec), rank_r );
@@ -260,6 +258,7 @@ void dd_sendrecv2_rvec_off(const gmx_domdec_t *dd,
     shmem_int_p(&off_bw, off_s_bw, rank_bw);
     /* No need to send the size */
     shmem_quiet();
+#ifdef FAST_SENDRECV2
 
     // SHDEBUG(" Before WHILE \n");
     while(!completed)
@@ -300,7 +299,7 @@ void dd_sendrecv2_rvec_off(const gmx_domdec_t *dd,
 
     // SHDEBUG(" After WHILE \n");
 
-#if 0
+#else
        while ( (((volatile int) off_fw) == -1) )
        		{
        			usleep(SHMEM_SLEEP_TIME);
@@ -314,7 +313,7 @@ void dd_sendrecv2_rvec_off(const gmx_domdec_t *dd,
 	  		shmem_quiet();
     /* Backward */
 
-	  	while  (((volatile int) off_bw) == -1) )
+	  	while  ( (((volatile int) off_bw) == -1) )
 		{
 			usleep(SHMEM_SLEEP_TIME);
 		}
