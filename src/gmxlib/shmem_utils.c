@@ -187,11 +187,11 @@ void shmem_wait_post     (gmx_domdec_shmem_buf_t * shmem, int pe)
 	SHDEBUG(" Posted on %d \n", pe);
 #else
 	shmem_fence();
-	// shmem_long_wait(shmem->post_events, EVENT_NOT_ACTIVE);
-	while ( ((volatile long) shmem->post_events[0]) == EVENT_NOT_ACTIVE )
+	shmem_long_wait(shmem->post_events, EVENT_NOT_ACTIVE);
+	/* while ( ((volatile long) shmem->post_events[0]) == EVENT_NOT_ACTIVE )
 	{
-		usleep(10);
-	}
+		usleep(SHMEM_SLEEP_TIME);
+	}*/
 #endif
 }
 
@@ -204,12 +204,12 @@ void shmem_wait_done     (gmx_domdec_shmem_buf_t * shmem, int pe)
 	SHDEBUG(" Received done on %d \n", pe);
 #else
 	shmem_fence();
-	// shmem_long_wait(shmem->done_events, EVENT_NOT_ACTIVE);
+	shmem_long_wait(shmem->done_events, EVENT_NOT_ACTIVE);
 
-	while ( ((volatile long) shmem->done_events[0]) == EVENT_NOT_ACTIVE )
+	/*while ( ((volatile long) shmem->done_events[0]) == EVENT_NOT_ACTIVE )
 	{
-		usleep(10);
-	}
+		usleep(SHMEM_SLEEP_TIME);
+	}*/
 
 #endif
 }
@@ -594,7 +594,7 @@ shmem_clear_post(shmem, _my_pe());
 void shmem_wait_for_previous_call(gmx_domdec_shmem_buf_t * shmem, int * call, int rank)
 {
 	int rcall;
-	while ( (rcall = shmem_int_g(call, rank)) != (*call) ) { usleep(10); };
+	while ( (rcall = shmem_int_g(call, rank)) != (*call) ) { usleep(SHMEM_SLEEP_TIME); };
 }
 
 

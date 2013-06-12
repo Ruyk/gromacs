@@ -848,7 +848,6 @@ void dd_move_f(gmx_domdec_t *dd, rvec f[], rvec *fshift)
             	static int rparams[2] = { -1,-1 };
             	int tmp[2];
             	static int call = 1;
-            	int rcall = 0;
 
             	shmem_wait_for_previous_call(dd->shmem, &call, dd->neighbor[d][0]);
 
@@ -858,7 +857,7 @@ void dd_move_f(gmx_domdec_t *dd, rvec f[], rvec *fshift)
             	dd_sendrecv_int_nobuf(dd, d, dddirForward, tmp, 2, rparams, 2);
 
             	SHDEBUG(" Shared in place %d (cd->bInPlace %d) (f %p, sbuf %p, rank_s %d) \n", rparams[0], cd->bInPlace, f, comm->vbuf2.v,dd->neighbor[d][0] );
-              {
+                {
             	rvec *        	buf_s = rparams[0]?f+rparams[1]:comm->vbuf2.v;
 
             	dd_sendrecv_rvec_nobuf(dd, d, dddirForward, buf_s, ind->nrecv[nzone+1],
