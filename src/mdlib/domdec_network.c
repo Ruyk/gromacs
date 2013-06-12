@@ -190,8 +190,6 @@ void dd_sendrecv_rvec_off(const gmx_domdec_t *dd,
     static int call = 1;
     gmx_domdec_shmem_buf_t * shmem = dd->shmem;
 
-
-
     rank_s = dd->neighbor[ddimind][direction == dddirForward ? 0 : 1];
     rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
 
@@ -199,17 +197,30 @@ void dd_sendrecv_rvec_off(const gmx_domdec_t *dd,
 
     shmem_wait_for_previous_call(dd->shmem, &call, rank_s);
 
-    shmem_put_offset(&off_l, off_s, rank_s);
+    shmem_int_p(&off_l, off_s, rank_s);
+    shmem_quiet();
+    SHDEBUG(" Waiting for fw to be != -1 \n")
+
+    while ( ((volatile int) off_l) == -1)
+    {
+    	usleep(1);
+    }
 
     shmem_wait_for_previous_call(dd->shmem, &call, rank_r);
 
-  	dd_sendrecv_rvec_nobuf(dd, ddimind, direction, buf_s + off_l, n_s,
-    		                 	buf_r + off_r, n_r);
+	/*shmem_getmem_sync(shmem, buf_s + off_l, n_s * sizeof(rvec), rank_s,
+			buf_r + off_r, n_r * sizeof(rvec), rank_r);*/
+	if (n_r)
+	{
+		shmem_getmem( buf_r + off_r, buf_s + off_l, n_r * sizeof(rvec), rank_r );
+	}
+	shmem_set_done(shmem, rank_r);
 
-    shmem_clear_offset(&off_l, rank_s);
+	shmem_wait_done(shmem, _my_pe());
+	shmem_clear_done(shmem, _my_pe());
 
+    off_l = -1;
     call++;
-
 
 }
 
@@ -230,6 +241,9 @@ void dd_sendrecv2_rvec_off(const gmx_domdec_t *dd,
 	int nrcall;
 	gmx_domdec_shmem_buf_t * shmem = dd->shmem;
 	static int call = 0;
+	int done_fw = 0;
+	int done_bw = 0;
+	int completed = 0;
 
 
 	rank_fw = dd->neighbor[ddimind][0];
@@ -238,61 +252,87 @@ void dd_sendrecv2_rvec_off(const gmx_domdec_t *dd,
 	SHDEBUG(" SendRecv2 (S1: %d,R1: %d) using SHMEM (n_s_fw %d, n_r_bw %d) call %d \n",
 			rank_fw, rank_bw, n_s_fw, n_r_fw, call);
 
-	/* dd_sendrecv_rvec_off(dd, ddimind, dddirForward, buf_s_fw, off_s_fw, n_s_fw,
-			                      buf_r_fw, off_r_fw, n_r_fw);
-			                      */
-
-  //  shmem_barrier_all();
+    /* Send offset to the getting PE */
     shmem_wait_for_previous_call(dd->shmem, &call, rank_fw);
-    shmem_wait_for_previous_call(dd->shmem, &call, rank_bw);
-
     shmem_int_p(&off_fw, off_s_fw, rank_fw);
+    shmem_quiet();
+    shmem_wait_for_previous_call(dd->shmem, &call, rank_bw);
     shmem_int_p(&off_bw, off_s_bw, rank_bw);
+    /* No need to send the size */
     shmem_quiet();
 
-
-    while ( (((volatile int) off_fw) == -1) || (((volatile int) off_bw) == -1) )
+    // SHDEBUG(" Before WHILE \n");
+    while(!completed)
+    {
+    	usleep(SHMEM_SLEEP_TIME);
+    	if ( !done_fw &&  (((volatile int) off_fw) != -1) )
+    	{
+    		// SHDEBUG(" Data appears to be received from the FW rank \n ");
+    		if (n_r_fw)
     		{
-    			usleep(10);
+    			shmem_getmem( buf_r_fw + off_r_fw, buf_s_fw + off_fw, n_r_fw * sizeof(rvec), rank_bw);
     		}
-    // shmem_barrier_all();
+    		shmem_int_p(&rank_bw_ready, 1, rank_bw);
+    		shmem_quiet();
+    		// SHDEBUG(" Posted ACK to rank_bw \n")
+    		done_fw = 1;
+    	}
+    	if ( !done_bw &&  (((volatile int) off_bw) != -1) )
+    	{
+    		// SHDEBUG(" Data appears to be received from the BW rank \n");
+    		if (n_r_bw)
+    		{
+    			shmem_getmem( buf_r_bw + off_r_bw, buf_s_fw + off_bw, n_r_bw * sizeof(rvec), rank_fw);
+    		}
 
+    		shmem_int_p(&rank_fw_ready, 1, rank_fw);
+    		shmem_quiet();
+    		// SHDEBUG(" Posted ACK to rank_fw \n");
+    		done_bw = 1;
+    	}
+    	if ( done_bw && done_fw &&
+    			( ((volatile int) rank_fw_ready) == 1 )  && (((volatile int) rank_bw_ready) == 1 ) )
+    	{
+    		completed = 1;
+    	}
 
+    }
+
+    // SHDEBUG(" After WHILE \n");
+
+#if 0
+       while ( (((volatile int) off_fw) == -1) )
+       		{
+       			usleep(SHMEM_SLEEP_TIME);
+       		}
     /* Forward */
 	  		if (n_r_fw)
 	  			{
 	  				shmem_getmem( buf_r_fw + off_r_fw, buf_s_fw + off_fw, n_r_fw * sizeof(rvec), rank_bw);
 	  			}
-	  		shmem_int_p(&rank_fw_ready, 1, rank_bw);
+	  		shmem_int_p(&rank_bw_ready, 1, rank_bw);
 	  		shmem_quiet();
     /* Backward */
+
+	  	while  (((volatile int) off_bw) == -1) )
+		{
+			usleep(SHMEM_SLEEP_TIME);
+		}
+
 	    if (n_r_bw)
    	  			{
    	  				shmem_getmem( buf_r_bw + off_r_bw, buf_s_fw + off_bw, n_r_bw * sizeof(rvec), rank_fw);
    	  			}
 
-	    shmem_int_p(&rank_bw_ready, 1, rank_fw);
+	    shmem_int_p(&rank_fw_ready, 1, rank_fw);
 	    shmem_quiet();
 
 
 	    while ( ((volatile int) rank_fw_ready) != 1  || (((volatile int) rank_bw_ready) != 1) )
 	    	{
-	    	usleep(10);
+	    	usleep(SHMEM_SLEEP_TIME);
 	    	}
-
-	  //  shmem_barrier_all();
-
-
-	/*   shmem_int_p(&off_fw, -1, rank_fw);
-	    shmem_int_p(&off_bw, -1, rank_bw);
-	    shmem_quiet();
-
-
-	   while ( (((volatile int) off_fw) != -1) || (((volatile int) off_bw) != -1) )
-	    		{
-	    			shmem_fence();
-	    		}
-	   shmem_barrier_all(); */
+#endif
 
        off_fw = -1;
        off_bw = -1;
