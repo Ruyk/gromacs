@@ -58,6 +58,10 @@ typedef struct {
     int        right_export_nconstruct;
     rvec *     send_buf;
     rvec *     recv_buf;
+#ifdef GMX_SHMEM
+    int        max_right_import;
+    int        max_left_import;
+#endif
 } t_comm_vsites;
 
 typedef struct {

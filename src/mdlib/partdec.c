@@ -98,6 +98,7 @@ typedef struct gmx_partdec {
 
 #ifdef GMX_SHMEM
     gmx_domdec_shmem_buf_t   *     shmem;
+    int                            max_atoms; /* Maximum num. of atoms across all PE */
 #endif
 
 } gmx_partdec_t;
@@ -202,8 +203,15 @@ void gmx_tx_rx_real(const t_commrec *cr,
     send_nodeid = cr->pd->neighbor[send_dir];
     recv_nodeid = cr->pd->neighbor[recv_dir];
 
+#ifdef GMX_SHMEM_INPLACE
     shmem_real_sendrecv(cr->pd->shmem, send_buf, send_bufsize, send_nodeid,
     					  recv_buf, recv_bufsize, recv_nodeid);
+#else
+    /* shmem_real_sendrecv(cr->pd->shmem, send_buf, send_bufsize, send_nodeid,
+       					  recv_buf, recv_bufsize, recv_nodeid);*/
+    shmem_sendrecv_nobuf(cr->pd->shmem, send_buf, send_bufsize, send_nodeid,
+    			recv_buf, recv_bufsize, recv_nodeid);
+#endif
 
 #else
     int        send_nodeid, recv_nodeid;
@@ -624,9 +632,18 @@ init_partdec_constraint(t_commrec *cr,
     }
     pdc->nconstraints = cnt;
 
+#ifdef GMX_SHMEM
+    {
+    	int local_max_send = max(6*(pd->index[cr->nodeid+1]-pd->constraints->right_range_send), 6*(pdc->left_range_send-pd->index[cr->nodeid]));
+    	int local_max_recv = max(6*(pd->index[cr->nodeid]-pdc->left_range_receive), 6*(pdc->right_range_receive-pd->index[cr->nodeid+1]));
+
+    	sh_snew(pdc->sendbuf, shmem_get_max_alloc(pd->shmem, local_max_send));
+    	sh_snew(pdc->recvbuf, shmem_get_max_alloc(pd->shmem, local_max_recv));
+    }
+#else
     snew(pdc->sendbuf, max(6*(pd->index[cr->nodeid+1]-pd->constraints->right_range_send), 6*(pdc->left_range_send-pd->index[cr->nodeid])));
     snew(pdc->recvbuf, max(6*(pd->index[cr->nodeid]-pdc->left_range_receive), 6*(pdc->right_range_receive-pd->index[cr->nodeid+1])));
-
+#endif
 }
 
 static void init_partdec(FILE *fp, t_commrec *cr, t_block *cgs, int *multinr,
@@ -637,6 +654,10 @@ static void init_partdec(FILE *fp, t_commrec *cr, t_block *cgs, int *multinr,
 
     snew(pd, 1);
     cr->pd = pd;
+#ifdef GMX_SHMEM
+    snew(pd->shmem, 1);
+    init_shmem_buf(pd->shmem);
+#endif
 
     set_left_right(cr);
 
@@ -663,7 +684,11 @@ static void init_partdec(FILE *fp, t_commrec *cr, t_block *cgs, int *multinr,
         /* Allocate a buffer of size natoms of the whole system
          * for summing the forces over the nodes.
          */
+#ifdef GMX_SHMEM
+        sh_snew(pd->vbuf, shmem_get_max_alloc(pd->shmem, cgs->index[cgs->nr]));
+#else
         snew(pd->vbuf, cgs->index[cgs->nr]);
+#endif
         pd->constraints = NULL;
     }
 #ifdef GMX_MPI
@@ -671,10 +696,7 @@ static void init_partdec(FILE *fp, t_commrec *cr, t_block *cgs, int *multinr,
     pd->mpi_req_rx = MPI_REQUEST_NULL;
 #endif
 
-#ifdef GMX_SHMEM
-    snew(pd->shmem, 1);
-    init_shmem_buf(pd->shmem);
-#endif
+
 }
 
 static void print_partdec(FILE *fp, const char *title,
@@ -940,6 +962,7 @@ gmx_bool setup_parallel_vsites(t_idef *idef, t_commrec *cr,
             for (j = 2; j < 1+nra; j++)
             {
                 iconstruct = ia[i+j];
+
                 if (iconstruct < i0)
                 {
                     add_to_vsitelist(&vsitecomm->left_import_construct,
@@ -952,9 +975,28 @@ gmx_bool setup_parallel_vsites(t_idef *idef, t_commrec *cr,
                                      &vsitecomm->right_import_nconstruct,
                                      &nalloc_right_construct, iconstruct);
                 }
+
             }
         }
     }
+#ifdef GMX_SHMEM
+    /* left/right import construct have to be reallocated to shmem.
+     * It is not possible to do it so within add_to_vsitelist due to implicit barriers.
+     */
+    {
+    	int max_left = shmem_get_max_alloc(pd->shmem, nalloc_left_construct);
+    	int max_right = shmem_get_max_alloc(pd->shmem, nalloc_right_construct);
+    	int * left, * right;
+    	snew(left, max_left);
+    	snew(right, max_right);
+    	memcpy(left, vsitecomm->left_import_construct, vsitecomm->left_import_nconstruct);
+    	memcpy(right, vsitecomm->right_import_construct, vsitecomm->right_import_nconstruct);
+    	vsitecomm->left_import_construct = left;
+    	vsitecomm->right_import_construct = right;
+    	vsitecomm->max_left_import = max_left;
+    	vsitecomm->max_right_import = max_right;
+    }
+#endif
 
     /* Pre-communicate the array lengths */
     gmx_tx_rx_void(cr,
@@ -963,9 +1005,14 @@ gmx_bool setup_parallel_vsites(t_idef *idef, t_commrec *cr,
     gmx_tx_rx_void(cr,
                    GMX_LEFT, (void *)&vsitecomm->left_import_nconstruct, sizeof(int),
                    GMX_RIGHT, (void *)&vsitecomm->right_export_nconstruct, sizeof(int));
-
+#ifdef GMX_SHMEM
+    /* These buffers needs to be realloc. to the max */
+    sh_snew(vsitecomm->left_export_construct, vsitecomm->max_left_import);
+    sh_snew(vsitecomm->right_export_construct, vsitecomm->max_right_import);
+#else
     snew(vsitecomm->left_export_construct, vsitecomm->left_export_nconstruct);
     snew(vsitecomm->right_export_construct, vsitecomm->right_export_nconstruct);
+#endif
 
     /* Communicate the construcing atom index arrays */
     gmx_tx_rx_void(cr,
@@ -984,9 +1031,13 @@ gmx_bool setup_parallel_vsites(t_idef *idef, t_commrec *cr,
 
     do_comm = (bufsize > 0);
 
+#ifdef GMX_SHMEM
+    sh_snew(vsitecomm->send_buf, 2*bufsize);
+    sh_snew(vsitecomm->recv_buf, 2*bufsize);
+#else
     snew(vsitecomm->send_buf, 2*bufsize);
     snew(vsitecomm->recv_buf, 2*bufsize);
-
+#endif
     return do_comm;
 }
 
@@ -999,6 +1050,46 @@ t_state *partdec_init_local_state(t_commrec *cr, t_state *state_global)
 
     /* Copy all the contents */
     *state_local = *state_global;
+#ifdef GMX_SHMEM
+    /* IN the SHMEM case, the state_global.{x,v,sd_X,cg_p} buffers are not
+     * in symmetric memory. Since they come from a tpr file and this is only read
+     * by the master, we cannot just replace the initialisation by symm calls (as this will cause deadlock).
+     * We could use the  set_state_entries(state, inputrec, cr->nnodes); call in the runner
+     * to replace the calls but this may break the modularity (as it this is way before the DD initialisation)
+     *
+     * We create and copy the x,v,sd_X,cg_p buffers here in symm memory and copy the values in parted_init_local_state
+     * to keep the modularity.
+     */
+    {
+    	int max_atoms = shmem_get_max_alloc(cr->pd->shmem, state_global->natoms);
+    	sh_snew(state_local->x, max_atoms);
+    	sh_snew(state_local->v, max_atoms);
+    	sh_snew(state_local->sd_X, max_atoms);
+    	sh_snew(state_local->cg_p, max_atoms);
+    	cr->pd->max_atoms = max_atoms;
+    	if (state_global->natoms)
+    	{
+    		SHDEBUG(" Before initial copy \n");
+    		if (state_global->x)
+    		{
+    			memcpy(state_local->x, state_global->x, state_global->natoms);
+    		}
+    		if (state_global->v)
+    		{
+    			memcpy(state_local->v, state_global->v, state_global->natoms);
+    		}
+    		if (state_global->sd_X)
+    		{
+    			memcpy(state_local->sd_X, state_global->sd_X, state_global->natoms);
+    		}
+    		if (state_global->cg_p)
+    		{
+    			memcpy(state_local->cg_p, state_global->cg_p, state_global->natoms);
+    		}
+    		SHDEBUG(" After initial copy \n");
+    	}
+    }
+#endif
     snew(state_local->lambda, efptNR);
     /* local storage for lambda */
     for (i = 0; i < efptNR; i++)
