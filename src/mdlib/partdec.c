@@ -203,14 +203,28 @@ void gmx_tx_rx_real(const t_commrec *cr,
     send_nodeid = cr->pd->neighbor[send_dir];
     recv_nodeid = cr->pd->neighbor[recv_dir];
 
-#ifdef GMX_SHMEM_INPLACE
+#ifdef GMX_SHMEM_NOT_INPLACE
     shmem_real_sendrecv(cr->pd->shmem, send_buf, send_bufsize, send_nodeid,
     					  recv_buf, recv_bufsize, recv_nodeid);
 #else
     /* shmem_real_sendrecv(cr->pd->shmem, send_buf, send_bufsize, send_nodeid,
        					  recv_buf, recv_bufsize, recv_nodeid);*/
-    shmem_sendrecv_nobuf(cr->pd->shmem, send_buf, send_bufsize, send_nodeid,
+    {
+    	static int call = 0;
+    	shmem_wait_for_previous_call(cr->pd->shmem, &call, recv_nodeid);
+
+    	shmem_sendrecv_nobuf(cr->pd->shmem, send_buf, send_bufsize, send_nodeid,
     			recv_buf, recv_bufsize, recv_nodeid);
+    	/* Receiver: Put offset on sender */
+
+    	/* Receiver: Put size on sender */
+
+    	/* Sender: Wait for receiver to put data on me */
+    	/* Sender: Put min(rsize, send_bufsize) elemens of send_buf on recv_buf + offset */
+
+    	/* Sender: Wait for ACK from receiver */
+    	call++;
+    }
 #endif
 
 #else
@@ -667,7 +681,11 @@ static void init_partdec(FILE *fp, t_commrec *cr, t_block *cgs, int *multinr,
         {
             gmx_fatal(FARGS, "Internal error in init_partdec: multinr = NULL");
         }
+#ifdef GMX_SHMEM
+        sh_snew(pd->index, cr->nnodes+1);
+#else
         snew(pd->index, cr->nnodes+1);
+#endif
         snew(pd->cgindex, cr->nnodes+1);
         pd->cgindex[0] = 0;
         pd->index[0]   = 0;
@@ -1061,6 +1079,7 @@ t_state *partdec_init_local_state(t_commrec *cr, t_state *state_global)
      * to keep the modularity.
      */
     {
+    	int i;
     	int max_atoms = shmem_get_max_alloc(cr->pd->shmem, state_global->natoms);
     	sh_snew(state_local->x, max_atoms);
     	sh_snew(state_local->v, max_atoms);
@@ -1072,19 +1091,39 @@ t_state *partdec_init_local_state(t_commrec *cr, t_state *state_global)
     		SHDEBUG(" Before initial copy \n");
     		if (state_global->x)
     		{
-    			memcpy(state_local->x, state_global->x, state_global->natoms);
+    			for (i = 0; i < state_global->natoms; i++)
+    			{
+    				copy_rvec(state_global->x[i], state_local->x[i]);
+    			}
+    			sfree(state_global->x);
+    			state_global->x = state_local->x;
     		}
     		if (state_global->v)
     		{
-    			memcpy(state_local->v, state_global->v, state_global->natoms);
+    			for (i = 0; i < state_global->natoms; i++)
+    			{
+    				copy_rvec(state_global->v[i], state_local->v[i]);
+    			}
+    			sfree(state_global->v);
+    			state_global->v = state_local->v;
     		}
     		if (state_global->sd_X)
     		{
-    			memcpy(state_local->sd_X, state_global->sd_X, state_global->natoms);
+    			for (i = 0; i < state_global->natoms; i++)
+    			{
+    				copy_rvec(state_global->sd_X[i], state_local->sd_X[i]);
+    			}
+    			sfree(state_global);
+    			state_global->sd_X = state_local->sd_X;
     		}
     		if (state_global->cg_p)
     		{
-    			memcpy(state_local->cg_p, state_global->cg_p, state_global->natoms);
+    			for (i = 0; i < state_global->natoms; i++)
+    			{
+    				copy_rvec(state_global->cg_p[i], state_local->cg_p[i]);
+    			}
+    			sfree(state_global->cg_p);
+    			state_global->cg_p = state_local->cg_p;
     		}
     		SHDEBUG(" After initial copy \n");
     	}
