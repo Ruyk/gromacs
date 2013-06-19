@@ -1334,7 +1334,21 @@ void forcerec_set_ranges(t_forcerec *fr,
     fr->ncg_force           = ncg_force;
     fr->natoms_force        = natoms_force;
     fr->natoms_force_constr = natoms_force_constr;
+#ifdef GMX_SHMEM
+    {
+    	int global_max = get_max_alloc_shmem(fr->natoms_force_constr);
 
+    	if (global_max > fr->nalloc_force)
+    	{
+    		fr->nalloc_force = over_alloc_dd(global_max);
+
+    		if (fr->bTwinRange)
+    		{
+    			sh_srenew(fr->f_twin, fr->nalloc_force);
+    		}
+    	}
+    }
+#else
     if (fr->natoms_force_constr > fr->nalloc_force)
     {
         fr->nalloc_force = over_alloc_dd(fr->natoms_force_constr);
@@ -1344,6 +1358,7 @@ void forcerec_set_ranges(t_forcerec *fr,
             srenew(fr->f_twin, fr->nalloc_force);
         }
     }
+#endif
 
     if (fr->bF_NoVirSum)
     {

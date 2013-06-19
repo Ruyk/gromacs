@@ -379,6 +379,11 @@ void init_em(FILE *fplog, const char *title,
         }
         copy_mat(state_global->box, ems->s.box);
 
+#ifdef GMX_SHMEM
+        // Use SHMEM for state_global
+        state_global->x = ems->s.x;
+#endif
+
         if (PAR(cr) && ir->eI != eiNM)
         {
             /* Initialize the particle decomposition and split the topology */

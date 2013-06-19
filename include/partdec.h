@@ -88,6 +88,10 @@ void gmx_tx_rx(const t_commrec *cr,
                int recv_dir, void *recv_buf, int recv_bufsize);
 /* Communicate simultaneously left and right */
 
+void gmx_tx_rx_real_off(const t_commrec *cr,
+                    int send_dir, real *send_buf, int off_s, int send_bufsize,
+                    int recv_dir, real *recv_buf, int off_r, int recv_bufsize);
+
 void gmx_tx_rx_real(const t_commrec *cr,
                     int send_dir, real *send_buf, int send_bufsize,
                     int recv_dir, real *recv_buf, int recv_bufsize);

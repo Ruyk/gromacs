@@ -978,6 +978,21 @@ int relax_shell_flexcon(FILE *fplog, t_commrec *cr, gmx_bool bVerbose,
         nat = state->natoms;
     }
 
+#ifdef GMX_SHMEM
+    {
+    	int max_local = get_max_alloc_shmem(nat);
+    	if (max_local > shfc->x_nalloc)
+    	{
+    		/* Allocate local arrays */
+    		shfc->x_nalloc = over_alloc_dd(max_local);
+    		for (i = 0; (i < 2); i++)
+    		{
+    			sh_srenew(shfc->x[i], shfc->x_nalloc);
+    			sh_srenew(shfc->f[i], shfc->x_nalloc);
+    		}
+    	}
+    }
+#else
     if (nat > shfc->x_nalloc)
     {
         /* Allocate local arrays */
@@ -988,6 +1003,7 @@ int relax_shell_flexcon(FILE *fplog, t_commrec *cr, gmx_bool bVerbose,
             srenew(shfc->f[i], shfc->x_nalloc);
         }
     }
+#endif
     for (i = 0; (i < 2); i++)
     {
         pos[i]   = shfc->x[i];

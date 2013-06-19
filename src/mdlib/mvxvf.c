@@ -102,6 +102,21 @@ void move_rvecs(const t_commrec *cr, gmx_bool bForward, gmx_bool bSum,
         /* Forward pulse around the ring, to increasing NODE number */
         if (bForward)
         {
+#define GMX_SHMEM_INPLACE
+#ifdef GMX_SHMEM_INPLACE
+            if (bSum)
+            {
+                gmx_tx_rx_real_off(cr,
+                               GMX_RIGHT, *(vecs), index[cur ] * DIM, HOMENRI(index, cur )*DIM,
+                               GMX_LEFT,  *(buf),  index[prev] * DIM, HOMENRI(index, prev)*DIM);
+            }
+            else
+            {
+                gmx_tx_rx_real_off(cr,
+                               GMX_RIGHT,  *(vecs), index[cur ] * DIM, HOMENRI(index, cur )*DIM,
+                               GMX_LEFT,   *(vecs), index[prev] * DIM, HOMENRI(index, prev)*DIM);
+            }
+#else
             if (bSum)
             {
                 gmx_tx_rx_real(cr,
@@ -114,13 +129,29 @@ void move_rvecs(const t_commrec *cr, gmx_bool bForward, gmx_bool bSum,
                                GMX_RIGHT, vecs[index[cur ]], HOMENRI(index, cur )*DIM,
                                GMX_LEFT, vecs[index[prev]], HOMENRI(index, prev)*DIM);
             }
+
+#endif
             /* Wait for communication to end */
-            gmx_wait(cr, right, left);
+                     gmx_wait(cr, right, left);
         }
 
         /* Backward pulse around the ring, to decreasing NODE number */
         else
         {
+#ifdef GMX_SHMEM_INPLACE
+        	if (bSum)
+        	{
+        		gmx_tx_rx_real_off(cr,
+        				GMX_LEFT, *vecs, index[cur ] * DIM, HOMENRI(index, cur )*DIM,
+        				GMX_RIGHT, *buf, index[next] * DIM, HOMENRI(index, next)*DIM);
+        	}
+        	else
+        	{
+        		gmx_tx_rx_real_off(cr,
+        				GMX_LEFT, *vecs, index[cur ] * DIM, HOMENRI(index, cur )*DIM,
+        				GMX_RIGHT, *vecs, index[next] * DIM, HOMENRI(index, next)*DIM);
+        	}
+#else
             if (bSum)
             {
                 gmx_tx_rx_real(cr,
@@ -133,6 +164,7 @@ void move_rvecs(const t_commrec *cr, gmx_bool bForward, gmx_bool bSum,
                                GMX_LEFT, vecs[index[cur ]], HOMENRI(index, cur )*DIM,
                                GMX_RIGHT, vecs[index[next]], HOMENRI(index, next)*DIM);
             }
+#endif
             /* Wait for communication to end */
             gmx_wait(cr, left, right);
         }
@@ -210,6 +242,20 @@ void move_reals(const t_commrec *cr, gmx_bool bForward, gmx_bool bSum,
         /* Forward pulse around the ring, to increasing NODE number */
         if (bForward)
         {
+#ifdef GMX_SHMEM_INPLACE
+        	if (bSum)
+        	{
+        		gmx_tx_rx_real_off(cr,
+        				GMX_RIGHT, reals, index[cur ], HOMENRI(index, cur ),
+        				GMX_LEFT,  buf,   index[prev], HOMENRI(index, prev));
+        	}
+        	else
+        	{
+        		gmx_tx_rx_real_off(cr,
+        				GMX_RIGHT, reals, index[cur ], HOMENRI(index, cur ),
+        				GMX_LEFT,  reals, index[prev], HOMENRI(index, prev));
+        	}
+#else
             if (bSum)
             {
                 gmx_tx_rx_real(cr,
@@ -222,11 +268,27 @@ void move_reals(const t_commrec *cr, gmx_bool bForward, gmx_bool bSum,
                                GMX_RIGHT, reals+index[cur ], HOMENRI(index, cur ),
                                GMX_LEFT, reals+index[prev], HOMENRI(index, prev));
             }
+#endif
             /* Wait for communication to end */
             gmx_wait(cr, right, left);
         }
         else
         {
+#ifdef GMX_SHMEM_INPLACE
+        	if (bSum)
+        	{
+        		gmx_tx_rx_real_off(cr,
+        				GMX_LEFT, reals, index[cur ], HOMENRI(index, cur ),
+        				GMX_RIGHT, buf, index[next], HOMENRI(index, next));
+        	}
+        	else
+        	{
+        		gmx_tx_rx_real_off(cr,
+        				GMX_LEFT, reals, index[cur ], HOMENRI(index, cur ),
+        				GMX_RIGHT, reals, index[next], HOMENRI(index, next));
+        		/* Wait for communication to end */
+        	}
+#else
             /* Backward pulse around the ring, to decreasing NODE number */
             if (bSum)
             {
@@ -241,6 +303,7 @@ void move_reals(const t_commrec *cr, gmx_bool bForward, gmx_bool bSum,
                                GMX_RIGHT, reals+index[next], HOMENRI(index, next));
                 /* Wait for communication to end */
             }
+#endif
             gmx_wait(cr, left, right);
         }
 
