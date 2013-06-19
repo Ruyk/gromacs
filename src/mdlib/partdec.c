@@ -310,29 +310,13 @@ void gmx_tx_rx_real(const t_commrec *cr,
     send_nodeid = cr->pd->neighbor[send_dir];
     recv_nodeid = cr->pd->neighbor[recv_dir];
 
-#if 1 // Use the not-in-place variant
-    shmem_real_sendrecv(cr->pd->shmem, send_buf, send_bufsize, send_nodeid,
-    					  recv_buf, recv_bufsize, recv_nodeid);
-#else
     /* shmem_real_sendrecv(cr->pd->shmem, send_buf, send_bufsize, send_nodeid,
-       					  recv_buf, recv_bufsize, recv_nodeid);*/
+       					  recv_buf, recv_bufsize, recv_nodeid); */
     {
-    	static int call = 0;
-    	shmem_wait_for_previous_call(cr->pd->shmem, &call, recv_nodeid);
 
-    	shmem_sendrecv_nobuf(cr->pd->shmem, send_buf, send_bufsize, send_nodeid,
+    	shmem_sendrecv_nobuf_put(cr->pd->shmem, send_buf, send_bufsize, send_nodeid,
     			recv_buf, recv_bufsize, recv_nodeid);
-    	/* Receiver: Put offset on sender */
-
-    	/* Receiver: Put size on sender */
-
-    	/* Sender: Wait for receiver to put data on me */
-    	/* Sender: Put min(rsize, send_bufsize) elemens of send_buf on recv_buf + offset */
-
-    	/* Sender: Wait for ACK from receiver */
-    	call++;
     }
-#endif
 
 #else
     int        send_nodeid, recv_nodeid;
@@ -383,7 +367,7 @@ void gmx_tx_rx_void(const t_commrec *cr,
     send_nodeid = cr->pd->neighbor[send_dir];
     recv_nodeid = cr->pd->neighbor[recv_dir];
 
-    shmem_void_sendrecv(shmem, send_buf, send_bufsize, send_nodeid,
+    shmem_sendrecv_nobuf(shmem, send_buf, send_bufsize, send_nodeid,
     				    recv_buf, recv_bufsize, recv_nodeid);
 
 #else
@@ -1112,8 +1096,8 @@ gmx_bool setup_parallel_vsites(t_idef *idef, t_commrec *cr,
     	int max_left = shmem_get_max_alloc(pd->shmem, nalloc_left_construct);
     	int max_right = shmem_get_max_alloc(pd->shmem, nalloc_right_construct);
     	int * left, * right;
-    	snew(left, max_left);
-    	snew(right, max_right);
+    	sh_snew(left, max_left);
+    	sh_snew(right, max_right);
     	memcpy(left, vsitecomm->left_import_construct, vsitecomm->left_import_nconstruct);
     	memcpy(right, vsitecomm->right_import_construct, vsitecomm->right_import_nconstruct);
     	vsitecomm->left_import_construct = left;

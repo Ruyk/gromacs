@@ -195,9 +195,14 @@ void shmem_real_sendrecv_nobuf(gmx_domdec_shmem_buf_t* shmem, real* buf_s, int n
 void shmem_int_sendrecv_nobuf(gmx_domdec_shmem_buf_t* shmem, int* buf_s, int n_s,
 		int rank_s, int* buf_r, int n_r, int rank_r);
 
+/* get version (used in DD) */
 void shmem_sendrecv_nobuf( gmx_domdec_shmem_buf_t * shmem,
             	                        void *buf_s, int size_s, int rank_s,
             	                        void *buf_r, int size_r, int rank_r);
+/* put variant */
+void shmem_sendrecv_nobuf_put( gmx_domdec_shmem_buf_t * shmem,
+		void *buf_s, int size_s, int rank_s,
+		void *buf_r, int size_r, int rank_r);
 
 void shmem_int_put_sync(gmx_domdec_shmem_buf_t * shmem, int * buf_r, int * buf_s, int n_s, int rank_s);
 

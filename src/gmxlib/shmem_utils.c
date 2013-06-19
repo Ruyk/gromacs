@@ -637,6 +637,42 @@ void shmem_sendrecv_nobuf( gmx_domdec_shmem_buf_t * shmem,
 	shmem_wait_done(shmem, _my_pe());
 	shmem_clear_done(shmem, _my_pe());
 }
+
+void shmem_sendrecv_nobuf_put( gmx_domdec_shmem_buf_t * shmem,
+		void *buf_s, int size_s, int rank_s,
+		void *buf_r, int size_r, int rank_r)
+{
+	static int call = 0;
+	static int size = -1;
+	static int done = -1;
+
+	shmem_wait_for_previous_call(shmem, &call, rank_r);
+
+	shmem_int_p(&size, size_r, rank_r);
+	shmem_quiet();
+
+	shmem_int_wait(&size, -1);
+
+	shmem_wait_for_previous_call(shmem, &call, rank_s);
+	if (min(size, size_s))
+	{
+		shmem_putmem( buf_r, buf_s, min(size, size_s), rank_s);
+	}
+	// shmem_set_done(shmem, rank_s);
+	shmem_int_p(&done, 1, rank_s);
+	shmem_quiet();
+
+	shmem_int_wait(&done, -1);
+
+	shmem_int_p(&size, -1, rank_r);
+	shmem_quiet();
+
+	shmem_int_wait_until(&size, SHMEM_CMP_EQ, -1);
+
+	done = -1;
+	call++;
+}
+
 void shmem_put_offset(int * off_l, int off_s, int rank)
 {
   shmem_int_p(off_l, off_s, rank);
