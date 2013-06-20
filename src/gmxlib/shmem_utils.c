@@ -658,7 +658,7 @@ void shmem_sendrecv_nobuf_put( gmx_domdec_shmem_buf_t * shmem,
 	{
 		shmem_putmem( buf_r, buf_s, min(size, size_s), rank_s);
 	}
-	// shmem_set_done(shmem, rank_s);
+
 	shmem_int_p(&done, 1, rank_s);
 	shmem_quiet();
 

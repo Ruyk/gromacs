@@ -387,6 +387,17 @@ void move_cgcm(FILE *log, const t_commrec *cr, rvec cg_cm[])
 
     for (i = 0; (i < cr->nnodes-1); i++)
     {
+#ifdef GMX_SHMEM
+    	{
+    		int start_s = cgindex[cur];
+    		int nr_s = cgindex[cur+1] - start_s;
+    		int start_r = cgindex[next];
+    		int nr_r = cgindex[next+1] - start_r;
+
+    		gmx_tx_rx_real_off(cr, GMX_LEFT, *cg_cm, start_s * DIM, nr_s * DIM,
+    			                  GMX_RIGHT, *cg_cm, start_r * DIM, nr_r * DIM);
+    	}
+#else
         start = cgindex[cur];
         nr    = cgindex[cur+1] - start;
 
@@ -403,6 +414,7 @@ void move_cgcm(FILE *log, const t_commrec *cr, rvec cg_cm[])
 #endif
         gmx_tx_wait(cr, GMX_LEFT);
         gmx_rx_wait(cr, GMX_RIGHT);
+#endif
 
         if (debug)
         {

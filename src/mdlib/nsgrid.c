@@ -412,7 +412,11 @@ void done_grid(t_grid *grid)
     grid->nr      = 0;
     clear_ivec(grid->n);
     grid->ncells  = 0;
+#ifdef GMX_SHMEM
+    sh_sfree(grid->cell_index);
+#else
     sfree(grid->cell_index);
+#endif
     sfree(grid->a);
     sfree(grid->index);
     sfree(grid->nra);
@@ -458,8 +462,23 @@ static int ci_not_used(ivec n)
 static void set_grid_ncg(t_grid *grid, int ncg)
 {
     int nr_old, i;
-
     grid->nr = ncg;
+#ifdef GMX_SHMEM
+    {
+    	int max_local = get_max_alloc_shmem(ncg + 1);
+    	if (max_local > grid->nr_alloc)
+    	{
+    		nr_old         = grid->nr_alloc;
+    		grid->nr_alloc = over_alloc_dd(max_local) + 1;
+    		sh_srenew(grid->cell_index, grid->nr_alloc);
+    		for (i = nr_old; i < grid->nr_alloc; i++)
+    		{
+    		    grid->cell_index[i] = 0;
+    		}
+    		srenew(grid->a, grid->nr_alloc);
+    	}
+    }
+#else
     if (grid->nr+1 > grid->nr_alloc)
     {
         nr_old         = grid->nr_alloc;
@@ -471,6 +490,7 @@ static void set_grid_ncg(t_grid *grid, int ncg)
         }
         srenew(grid->a, grid->nr_alloc);
     }
+#endif
 }
 
 void grid_first(FILE *fplog, t_grid *grid,
@@ -904,6 +924,10 @@ void mv_grid(t_commrec *cr, t_grid *grid)
     cgindex = pd_cgindex(cr);
     for (i = 0; (i < cr->nnodes-1); i++)
     {
+#ifdef GMX_SHMEM
+    	gmx_tx_rx_int_off(cr, GMX_LEFT, ci, cgindex[cur], (cgindex[cur+1] - cgindex[cur])*sizeof(*ci),
+    			             GMX_RIGHT, ci, cgindex[next], (cgindex[next+1] - cgindex[next]) * sizeof(*ci));
+#else
         start = cgindex[cur];
         nr    = cgindex[cur+1] - start;
         gmx_tx(cr, GMX_LEFT, &(ci[start]), nr*sizeof(*ci));
@@ -914,7 +938,7 @@ void mv_grid(t_commrec *cr, t_grid *grid)
 
         gmx_tx_wait(cr, GMX_LEFT);
         gmx_rx_wait(cr, GMX_RIGHT);
-
+#endif
         cur = next;
     }
 }
