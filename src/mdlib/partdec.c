@@ -444,7 +444,7 @@ void gmx_tx_rx_void(const t_commrec *cr,
     send_nodeid = cr->pd->neighbor[send_dir];
     recv_nodeid = cr->pd->neighbor[recv_dir];
 
-    shmem_sendrecv_nobuf(shmem, send_buf, send_bufsize, send_nodeid,
+    shmem_sendrecv_nobuf_put(shmem, send_buf, send_bufsize, send_nodeid,
     				    recv_buf, recv_bufsize, recv_nodeid);
 
 #else
