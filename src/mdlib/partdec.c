@@ -193,123 +193,7 @@ void gmx_rx_wait(const t_commrec *cr, int nodeid)
 
 #ifdef GMX_SHMEM
 
-void shmem_float_sendrecv_off(const t_commrec* cr, real* send_buf, int off_s,
-		int send_bufsize, int send_nodeid, real* recv_buf, int off_r,
-		int recv_bufsize, int recv_nodeid)
-{
-	{
-		static int call = 0;
-		static int rem_off = -1;
-		static int rem_size = -1;
-		static int done = -1;
-		shmem_wait_for_previous_call(cr->pd->shmem, &call, recv_nodeid);
 
-		/* Receiver: Put offset on sender */
-		shmem_int_p(&rem_off, off_r, recv_nodeid);
-		/* Receiver: Put size on sender */
-		shmem_int_p(&rem_size, recv_bufsize, recv_nodeid);
-		/* Sender: Wait for receiver to put data on me */
-		shmem_quiet();
-		SHDEBUG(" Put data on Sender %d\n", recv_nodeid);
-		shmem_int_wait(&rem_size, -1);
-		shmem_int_wait(&rem_off, -1);
-		SHDEBUG(" Data from receiver (rem_size %d, rem_off %d) \n", rem_size,
-				rem_off);
-		shmem_wait_for_previous_call(cr->pd->shmem, &call, send_nodeid);
-		/* Sender: Put min(rsize, send_bufsize) elemens of send_buf on recv_buf + offset */
-		if (min(rem_size, send_bufsize)) {
-			SHDEBUG(
-					" Putting data on recv_nodeid, rem off %d send off %d, recv ptr %p send ptr %p \n",
-					rem_off, off_s, recv_buf, send_buf);
-			shmem_float_put(((real *) recv_buf + rem_off),
-					((real *) send_buf + off_s), min(rem_size, send_bufsize),
-					send_nodeid);
-		}
-		SHDEBUG(" Putting ACK in %d \n", send_nodeid);
-		/* Tell receiver data is ready */
-		shmem_int_p(&done, 1, send_nodeid);
-		shmem_quiet();
-		SHDEBUG(" Waiting for done from send_nodeid %d \n", recv_nodeid);
-		/* Wait for data to be written */
-		shmem_int_wait(&done, -1);
-		SHDEBUG(" After done \n");
-		/* Receiver: Put offset on sender */
-		shmem_int_p(&rem_off, -1, recv_nodeid);
-		/* Receiver: Put size on sender */
-		shmem_int_p(&rem_size, -1, recv_nodeid);
-		shmem_quiet();
-		/* Sender: Wait for ACK from receiver */
-		SHDEBUG(" Waiting for data to be reset  \n");
-		shmem_int_wait_until(&rem_size, SHMEM_CMP_EQ, -1);
-		shmem_int_wait_until(&rem_off, SHMEM_CMP_EQ, -1);
-		SHDEBUG(
-				" Data in receiver (should be -1) (rem_size %d, send_size %d) \n",
-				rem_size, rem_off);
-		rem_off = -1;
-		rem_size = -1;
-		done = -1;
-		call++;
-	}
-}
-
-void shmem_int_sendrecv_off(const t_commrec* cr, int* send_buf, int off_s,
-		int send_bufsize, int send_nodeid, int* recv_buf, int off_r,
-		int recv_bufsize, int recv_nodeid)
-{
-	{
-		static int call = 0;
-		static int rem_off = -1;
-		static int rem_size = -1;
-		static int done = -1;
-		shmem_wait_for_previous_call(cr->pd->shmem, &call, recv_nodeid);
-
-		/* Receiver: Put offset on sender */
-		shmem_int_p(&rem_off, off_r, recv_nodeid);
-		/* Receiver: Put size on sender */
-		shmem_int_p(&rem_size, recv_bufsize, recv_nodeid);
-		/* Sender: Wait for receiver to put data on me */
-		shmem_quiet();
-		SHDEBUG(" Put data on Sender %d\n", recv_nodeid);
-		shmem_int_wait(&rem_size, -1);
-		shmem_int_wait(&rem_off, -1);
-		SHDEBUG(" Data from receiver (rem_size %d, rem_off %d) \n", rem_size,
-				rem_off);
-		shmem_wait_for_previous_call(cr->pd->shmem, &call, send_nodeid);
-		/* Sender: Put min(rsize, send_bufsize) elemens of send_buf on recv_buf + offset */
-		if (min(rem_size, send_bufsize)) {
-			SHDEBUG(
-					" Putting data on recv_nodeid, rem off %d send off %d, recv ptr %p send ptr %p \n",
-					rem_off, off_s, recv_buf, send_buf);
-			shmem_int_put(((int *) recv_buf + rem_off),
-					((int *) send_buf + off_s), min(rem_size, send_bufsize),
-					send_nodeid);
-		}
-		SHDEBUG(" Putting ACK in %d \n", send_nodeid);
-		/* Tell receiver data is ready */
-		shmem_int_p(&done, 1, send_nodeid);
-		shmem_quiet();
-		SHDEBUG(" Waiting for done from send_nodeid %d \n", recv_nodeid);
-		/* Wait for data to be written */
-		shmem_int_wait(&done, -1);
-		SHDEBUG(" After done \n");
-		/* Receiver: Put offset on sender */
-		shmem_int_p(&rem_off, -1, recv_nodeid);
-		/* Receiver: Put size on sender */
-		shmem_int_p(&rem_size, -1, recv_nodeid);
-		shmem_quiet();
-		/* Sender: Wait for ACK from receiver */
-		SHDEBUG(" Waiting for data to be reset  \n");
-		shmem_int_wait_until(&rem_size, SHMEM_CMP_EQ, -1);
-		shmem_int_wait_until(&rem_off, SHMEM_CMP_EQ, -1);
-		SHDEBUG(
-				" Data in receiver (should be -1) (rem_size %d, send_size %d) \n",
-				rem_size, rem_off);
-		rem_off = -1;
-		rem_size = -1;
-		done = -1;
-		call++;
-	}
-}
 
 
 void gmx_tx_rx_int_off(const t_commrec *cr,
@@ -321,8 +205,8 @@ void gmx_tx_rx_int_off(const t_commrec *cr,
     send_nodeid = cr->pd->neighbor[send_dir];
     recv_nodeid = cr->pd->neighbor[recv_dir];
     SHDEBUG(" Sending to %d receiving from %d \n", send_nodeid, recv_nodeid);
-#if 1 // def GMX_SHMEM_INPLACE
-	shmem_int_sendrecv_off(cr, send_buf, off_s, send_bufsize, send_nodeid,
+#ifdef GMX_SHMEM
+	shmem_int_sendrecv_off(cr->pd->shmem, send_buf, off_s, send_bufsize, send_nodeid,
 			recv_buf, off_r, recv_bufsize, recv_nodeid);
 #else
     {
@@ -372,7 +256,7 @@ void gmx_tx_rx_real_off(const t_commrec *cr,
     recv_nodeid = cr->pd->neighbor[recv_dir];
     SHDEBUG(" Sending to %d receiving from %d \n", send_nodeid, recv_nodeid);
 
-	shmem_float_sendrecv_off(cr, send_buf, off_s, send_bufsize, send_nodeid,
+	shmem_float_sendrecv_off(cr->pd->shmem, send_buf, off_s, send_bufsize, send_nodeid,
 			recv_buf, off_r, recv_bufsize, recv_nodeid);
 
 }
