@@ -96,6 +96,12 @@ void gmx_tx_rx_int_off(const t_commrec *cr,
                     int send_dir, int *send_buf, int off_s, int send_bufsize,
                     int recv_dir, int *recv_buf, int off_r, int recv_bufsize);
 
+#ifdef GMX_SHMEM
+void gmx_tx_rx_int_off_call(const t_commrec *cr,
+                    int send_dir, int *send_buf, int off_s, int send_bufsize,
+                    int recv_dir, int *recv_buf, int off_r, int recv_bufsize);
+#endif
+
 void gmx_tx_rx_real(const t_commrec *cr,
                     int send_dir, real *send_buf, int send_bufsize,
                     int recv_dir, real *recv_buf, int recv_bufsize);

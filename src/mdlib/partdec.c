@@ -191,6 +191,7 @@ void gmx_rx_wait(const t_commrec *cr, int nodeid)
 #endif
 }
 
+
 #ifdef GMX_SHMEM
 
 void shmem_float_sendrecv_off(const t_commrec* cr, real* send_buf, int off_s,
@@ -209,10 +210,11 @@ void shmem_float_sendrecv_off(const t_commrec* cr, real* send_buf, int off_s,
 		/* Receiver: Put size on sender */
 		shmem_int_p(&rem_size, recv_bufsize, recv_nodeid);
 		/* Sender: Wait for receiver to put data on me */
+		shmem_fence();
 		shmem_quiet();
 		SHDEBUG(" Put data on Sender %d\n", recv_nodeid);
 		shmem_int_wait(&rem_size, -1);
-		shmem_int_wait(&rem_off, -1);
+		// shmem_int_wait(&rem_off, -1);
 		SHDEBUG(" Data from receiver (rem_size %d, rem_off %d) \n", rem_size,
 				rem_off);
 		shmem_wait_for_previous_call(cr->pd->shmem, &call, send_nodeid);
@@ -228,15 +230,18 @@ void shmem_float_sendrecv_off(const t_commrec* cr, real* send_buf, int off_s,
 		SHDEBUG(" Putting ACK in %d \n", send_nodeid);
 		/* Tell receiver data is ready */
 		shmem_int_p(&done, 1, send_nodeid);
+		shmem_fence();
 		shmem_quiet();
 		SHDEBUG(" Waiting for done from send_nodeid %d \n", recv_nodeid);
 		/* Wait for data to be written */
 		shmem_int_wait(&done, -1);
 		SHDEBUG(" After done \n");
+
 		/* Receiver: Put offset on sender */
 		shmem_int_p(&rem_off, -1, recv_nodeid);
 		/* Receiver: Put size on sender */
 		shmem_int_p(&rem_size, -1, recv_nodeid);
+		shmem_fence();
 		shmem_quiet();
 		/* Sender: Wait for ACK from receiver */
 		SHDEBUG(" Waiting for data to be reset  \n");
@@ -245,12 +250,16 @@ void shmem_float_sendrecv_off(const t_commrec* cr, real* send_buf, int off_s,
 		SHDEBUG(
 				" Data in receiver (should be -1) (rem_size %d, send_size %d) \n",
 				rem_size, rem_off);
-		rem_off = -1;
-		rem_size = -1;
-		done = -1;
+
+		shmem_int_p(&done, -1, send_nodeid);
+		shmem_fence();
+		shmem_quiet();
+		shmem_int_wait_until(&done, SHMEM_CMP_EQ, -1);
+
 		call++;
 	}
 }
+
 
 void shmem_int_sendrecv_off(const t_commrec* cr, int* send_buf, int off_s,
 		int send_bufsize, int send_nodeid, int* recv_buf, int off_r,
@@ -268,45 +277,52 @@ void shmem_int_sendrecv_off(const t_commrec* cr, int* send_buf, int off_s,
 		/* Receiver: Put size on sender */
 		shmem_int_p(&rem_size, recv_bufsize, recv_nodeid);
 		/* Sender: Wait for receiver to put data on me */
+		shmem_fence();
 		shmem_quiet();
-		SHDEBUG(" Put data on Sender %d\n", recv_nodeid);
+		SHDEBUG(" Put data on Recv %d\n", recv_nodeid);
 		shmem_int_wait(&rem_size, -1);
-		shmem_int_wait(&rem_off, -1);
-		SHDEBUG(" Data from receiver (rem_size %d, rem_off %d) \n", rem_size,
+		// shmem_int_wait(&rem_off, -1);
+		SHDEBUG(" Data from the one we will send (rem_size %d, rem_off %d) \n", rem_size,
 				rem_off);
 		shmem_wait_for_previous_call(cr->pd->shmem, &call, send_nodeid);
 		/* Sender: Put min(rsize, send_bufsize) elemens of send_buf on recv_buf + offset */
 		if (min(rem_size, send_bufsize)) {
 			SHDEBUG(
-					" Putting data on recv_nodeid, rem off %d send off %d, recv ptr %p send ptr %p \n",
-					rem_off, off_s, recv_buf, send_buf);
+					" Putting data on send %d, rem off %d send off %d, recv ptr %p send ptr %p \n",
+					send_nodeid, rem_off, off_s, recv_buf, send_buf);
 			shmem_int_put(((int *) recv_buf + rem_off),
 					((int *) send_buf + off_s), min(rem_size, send_bufsize),
 					send_nodeid);
+
 		}
-		SHDEBUG(" Putting ACK in %d \n", send_nodeid);
+		// SHDEBUG(" Putting ACK in %d \n", send_nodeid);
 		/* Tell receiver data is ready */
 		shmem_int_p(&done, 1, send_nodeid);
+		shmem_fence();
 		shmem_quiet();
-		SHDEBUG(" Waiting for done from send_nodeid %d \n", recv_nodeid);
+		// SHDEBUG(" Waiting for done from send_nodeid %d \n", recv_nodeid);
 		/* Wait for data to be written */
 		shmem_int_wait(&done, -1);
-		SHDEBUG(" After done \n");
+		// SHDEBUG(" After done \n");
 		/* Receiver: Put offset on sender */
 		shmem_int_p(&rem_off, -1, recv_nodeid);
 		/* Receiver: Put size on sender */
 		shmem_int_p(&rem_size, -1, recv_nodeid);
+		shmem_fence();
 		shmem_quiet();
 		/* Sender: Wait for ACK from receiver */
 		SHDEBUG(" Waiting for data to be reset  \n");
 		shmem_int_wait_until(&rem_size, SHMEM_CMP_EQ, -1);
-		shmem_int_wait_until(&rem_off, SHMEM_CMP_EQ, -1);
+		// shmem_int_wait_until(&rem_off, SHMEM_CMP_EQ, -1);
 		SHDEBUG(
 				" Data in receiver (should be -1) (rem_size %d, send_size %d) \n",
 				rem_size, rem_off);
-		rem_off = -1;
-		rem_size = -1;
-		done = -1;
+
+		shmem_int_p(&done, -1, send_nodeid);
+				shmem_fence();
+				shmem_quiet();
+				shmem_int_wait_until(&done, SHMEM_CMP_EQ, -1);
+
 		call++;
 	}
 }
@@ -321,7 +337,7 @@ void gmx_tx_rx_int_off(const t_commrec *cr,
     send_nodeid = cr->pd->neighbor[send_dir];
     recv_nodeid = cr->pd->neighbor[recv_dir];
     SHDEBUG(" Sending to %d receiving from %d \n", send_nodeid, recv_nodeid);
-#if 1 // def GMX_SHMEM_INPLACE
+#ifdef GMX_SHMEM
 	shmem_int_sendrecv_off(cr, send_buf, off_s, send_bufsize, send_nodeid,
 			recv_buf, off_r, recv_bufsize, recv_nodeid);
 #else
@@ -367,15 +383,28 @@ void gmx_tx_rx_real_off(const t_commrec *cr,
                     int recv_dir, real *recv_buf, int off_r, int recv_bufsize)
 {
     int        send_nodeid, recv_nodeid;
-
+    // static  int call = 0;
     send_nodeid = cr->pd->neighbor[send_dir];
     recv_nodeid = cr->pd->neighbor[recv_dir];
-    SHDEBUG(" Sending to %d receiving from %d \n", send_nodeid, recv_nodeid);
-
+    //printf("%d Sending to %d receiving from %d , call %d \n", _my_pe(), send_nodeid, recv_nodeid, call);
+#if 1
+    // shmem_barrier_all();
+    // printf("%d Before waiting recv \n", _my_pe());
+	// shmem_wait_for_previous_call(cr->pd->shmem, &call, recv_nodeid);
+	// printf("%d Before waiting send \n", _my_pe());
+	// shmem_wait_for_previous_call(cr->pd->shmem, &call, send_nodeid);
+	// printf("%d Before float sendrecv \n", _my_pe());
 	shmem_float_sendrecv_off(cr, send_buf, off_s, send_bufsize, send_nodeid,
 			recv_buf, off_r, recv_bufsize, recv_nodeid);
+	// printf("%d After sendrecv \n", _my_pe());
+#else
+	gmx_tx_rx_real(cr, send_dir, send_buf + off_s, send_bufsize,
+				recv_dir, recv_buf + off_r, recv_bufsize);
+#endif
+	// call++;
 
 }
+
 #endif
 
 void gmx_tx_rx_real(const t_commrec *cr,
@@ -408,7 +437,7 @@ void gmx_tx_rx_real(const t_commrec *cr,
 #else
 #define mpi_type MPI_FLOAT
 #endif
-
+    SHDEBUG(" Bufsize (%d, %d) send: %d, recv: %d \n", send_bufsize, recv_bufsize, send_nodeid, recv_nodeid);
     if (send_bufsize > 0 && recv_bufsize > 0)
     {
         MPI_Sendrecv(send_buf, send_bufsize, mpi_type, RANK(cr, send_nodeid), tx_tag,
@@ -425,6 +454,7 @@ void gmx_tx_rx_real(const t_commrec *cr,
         MPI_Recv(recv_buf, recv_bufsize, mpi_type, RANK(cr, recv_nodeid), rx_tag,
                  cr->mpi_comm_mygroup, &stat);
     }
+    SHDEBUG(" Done \n")
 #undef mpi_type
 #endif
 }
@@ -436,7 +466,7 @@ void gmx_tx_rx_void(const t_commrec *cr,
 {
 #ifndef GMX_MPI
     gmx_call("gmx_tx_rx_void");
-#elif defined(GMX_SHMEM)
+#elif 0 // defined(GMX_SHMEM)
     int send_nodeid, recv_nodeid;
 
     gmx_domdec_shmem_buf_t * shmem = cr->pd->shmem;
@@ -608,11 +638,11 @@ pd_move_x_constraints(t_commrec *  cr,
         recvptr = x0 + pdc->left_range_receive;
         sendptr = x0 + pdc->right_range_send;
     }
-
+printf("%d Pulse to the right START %d %d\n", _my_pe(), sendcnt, recvcnt);
     gmx_tx_rx_real(cr,
                    GMX_RIGHT, (real *)sendptr, sendcnt,
                    GMX_LEFT, (real *)recvptr, recvcnt);
-
+SHDEBUG("%d Pulse to the right DONE \n", _my_pe());
     if (x1 != NULL)
     {
         /* copy back to x0/x1 */
@@ -650,10 +680,11 @@ pd_move_x_constraints(t_commrec *  cr,
         sendptr = x0 + pd->index[thisnode];
         recvptr = x0 + pd->index[thisnode+1];
     }
-
+    SHDEBUG("Pulse to the left START \n")
     gmx_tx_rx_real(cr,
                    GMX_LEFT, (real *)sendptr, sendcnt,
                    GMX_RIGHT, (real *)recvptr, recvcnt);
+    SHDEBUG("Pulse to the left done \n")
 
     /* Final copy back from buffers */
     if (x1 != NULL)
@@ -771,57 +802,72 @@ init_partdec_constraint(t_commrec *cr,
     int ai, aj, nodei, nodej;
     int nratoms;
     int nodeid;
-
-    snew(pdc, 1);
-    cr->pd->constraints = pdc;
-
-
-    /* Who am I? */
-    nodeid = cr->nodeid;
-
-    /* Setup LINCS communication ranges */
-    pdc->left_range_receive   = left_range[nodeid];
-    pdc->right_range_receive  = right_range[nodeid]+1;
-    pdc->left_range_send      = (nodeid > 0) ? right_range[nodeid-1]+1 : 0;
-    pdc->right_range_send     = (nodeid < cr->nnodes-1) ? left_range[nodeid+1] : pd->index[cr->nnodes];
-
-    snew(pdc->nlocalatoms, idef->il[F_CONSTR].nr);
-    nratoms = interaction_function[F_CONSTR].nratoms;
-
-    for (i = 0, cnt = 0; i < idef->il[F_CONSTR].nr; i += nratoms+1, cnt++)
-    {
-        ai    = idef->il[F_CONSTR].iatoms[i+1];
-        aj    = idef->il[F_CONSTR].iatoms[i+2];
-        nodei = 0;
-        while (ai >= pd->index[nodei+1])
-        {
-            nodei++;
-        }
-        nodej = 0;
-        while (aj >= pd->index[nodej+1])
-        {
-            nodej++;
-        }
-        pdc->nlocalatoms[cnt] = 0;
-        if (nodei == nodeid)
-        {
-            pdc->nlocalatoms[cnt]++;
-        }
-        if (nodej == nodeid)
-        {
-            pdc->nlocalatoms[cnt]++;
-        }
-    }
-    pdc->nconstraints = cnt;
-
 #ifdef GMX_SHMEM
+    int local_max_send, local_max_recv;
+	snew(pdc, 1);
+    if (idef->il[F_CONSTR].nr > 0)
     {
-    	int local_max_send = max(6*(pd->index[cr->nodeid+1]-pd->constraints->right_range_send), 6*(pdc->left_range_send-pd->index[cr->nodeid]));
-    	int local_max_recv = max(6*(pd->index[cr->nodeid]-pdc->left_range_receive), 6*(pdc->right_range_receive-pd->index[cr->nodeid+1]));
+    	cr->pd->constraints = pdc;
+#else
+    	snew(pdc, 1);
+    	cr->pd->constraints = pdc;
+#endif
 
+    	/* Who am I? */
+    	nodeid = cr->nodeid;
+
+    	/* Setup LINCS communication ranges */
+    	pdc->left_range_receive   = left_range[nodeid];
+    	pdc->right_range_receive  = right_range[nodeid]+1;
+    	pdc->left_range_send      = (nodeid > 0) ? right_range[nodeid-1]+1 : 0;
+    	pdc->right_range_send     = (nodeid < cr->nnodes-1) ? left_range[nodeid+1] : pd->index[cr->nnodes];
+
+    	snew(pdc->nlocalatoms, idef->il[F_CONSTR].nr);
+    	nratoms = interaction_function[F_CONSTR].nratoms;
+
+    	for (i = 0, cnt = 0; i < idef->il[F_CONSTR].nr; i += nratoms+1, cnt++)
+    	{
+    		ai    = idef->il[F_CONSTR].iatoms[i+1];
+    		aj    = idef->il[F_CONSTR].iatoms[i+2];
+    		nodei = 0;
+    		while (ai >= pd->index[nodei+1])
+    		{
+    			nodei++;
+    		}
+    		nodej = 0;
+    		while (aj >= pd->index[nodej+1])
+    		{
+    			nodej++;
+    		}
+    		pdc->nlocalatoms[cnt] = 0;
+    		if (nodei == nodeid)
+    		{
+    			pdc->nlocalatoms[cnt]++;
+    		}
+    		if (nodej == nodeid)
+    		{
+    			pdc->nlocalatoms[cnt]++;
+    		}
+    	}
+    	pdc->nconstraints = cnt;
+#ifdef GMX_SHMEM
+
+    	local_max_send = max(6*(pd->index[cr->nodeid+1]-pd->constraints->right_range_send), 6*(pdc->left_range_send-pd->index[cr->nodeid]));
+    	local_max_recv = max(6*(pd->index[cr->nodeid]-pdc->left_range_receive), 6*(pdc->right_range_receive-pd->index[cr->nodeid+1]));
+    	SHDEBUG(" END Inside IF \n");
+    }
+    else
+    {
+    	SHDEBUG(" In the ELSE \n");
+    	local_max_send = 1;
+    	local_max_recv = 1;
+    	SHDEBUG(" END of ELSE \n");
+    }
+    SHDEBUG(" Before sendbuf %p, %p, local %d, %d", pdc->sendbuf, pdc->recvbuf, local_max_send, local_max_recv);
     	sh_snew(pdc->sendbuf, shmem_get_max_alloc(pd->shmem, local_max_send));
     	sh_snew(pdc->recvbuf, shmem_get_max_alloc(pd->shmem, local_max_recv));
-    }
+    SHDEBUG(" After recvbuf %p %p, local %d, %d", pdc->sendbuf, pdc->recvbuf, local_max_send, local_max_recv);
+
 #else
     snew(pdc->sendbuf, max(6*(pd->index[cr->nodeid+1]-pd->constraints->right_range_send), 6*(pdc->left_range_send-pd->index[cr->nodeid])));
     snew(pdc->recvbuf, max(6*(pd->index[cr->nodeid]-pdc->left_range_receive), 6*(pdc->right_range_receive-pd->index[cr->nodeid+1])));
@@ -1056,12 +1102,16 @@ gmx_localtop_t *split_system(FILE *log,
     /*split_idef(&(top->idef),cr->nnodes-cr->npmenodes);*/
 
     select_my_idef(log, &(top->idef), multinr_nre, cr);
+#ifdef GMX_SHMEM
 
+    	init_partdec_constraint(cr, &(top->idef), left_range, right_range);
+
+#else
     if (top->idef.il[F_CONSTR].nr > 0)
     {
         init_partdec_constraint(cr, &(top->idef), left_range, right_range);
     }
-
+#endif
     if (log)
     {
         pr_idef_division(log, &(top->idef), npp, multinr_nre);
@@ -1218,8 +1268,11 @@ gmx_bool setup_parallel_vsites(t_idef *idef, t_commrec *cr,
     do_comm = (bufsize > 0);
 
 #ifdef GMX_SHMEM
-    sh_snew(vsitecomm->send_buf, 2*bufsize);
-    sh_snew(vsitecomm->recv_buf, 2*bufsize);
+    {
+    	int max_bufsize = shmem_get_max_alloc(pd->shmem, 2*bufsize);
+    	sh_snew(vsitecomm->send_buf, max_bufsize);
+    	sh_snew(vsitecomm->recv_buf, max_bufsize);
+    }
 #else
     snew(vsitecomm->send_buf, 2*bufsize);
     snew(vsitecomm->recv_buf, 2*bufsize);
