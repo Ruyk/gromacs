@@ -128,6 +128,7 @@ void shmem_unlock        (gmx_domdec_shmem_buf_t * shmem, int pe);
 gmx_bool shmem_is_locked (gmx_domdec_shmem_buf_t * shmem, int pe);
 
 
+
 /* init_shmem_buf
  * =========================
  * 	  Initialises shmem_buf structure. Fatal if shmem is NULL.
@@ -211,6 +212,15 @@ void shmem_sync_pair(gmx_domdec_shmem_buf_t* shmem, int rank_s, int rank_r) ;
 
 void shmem_put_offset(int * off_l, int off_s, int rank);
 void shmem_clear_offset(int * off_l, int rank);
+
+void shmem_int_sendrecv_off(gmx_domdec_shmem_buf_t* shmem, int* send_buf, int off_s,
+		int send_bufsize, int send_nodeid, int* recv_buf, int off_r,
+		int recv_bufsize, int recv_nodeid);
+
+void shmem_float_sendrecv_off(gmx_domdec_shmem_buf_t* shmem, real* send_buf, int off_s,
+		int send_bufsize, int send_nodeid, real* recv_buf, int off_r,
+		int recv_bufsize, int recv_nodeid);
+
 
 #endif /* GMX_SHMEM */
 
