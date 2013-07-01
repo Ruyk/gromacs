@@ -201,10 +201,7 @@ void dd_sendrecv_rvec_off(const gmx_domdec_t *dd,
     shmem_quiet();
     SHDEBUG(" Waiting for fw to be != -1 \n")
 
-    while ( ((volatile int) off_l) == -1)
-    {
-    	usleep(1);
-    }
+    shmem_int_wait(&off_l, -1);
 
     shmem_wait_for_previous_call(dd->shmem, &call, rank_r);
 
@@ -219,6 +216,7 @@ void dd_sendrecv_rvec_off(const gmx_domdec_t *dd,
 
     off_l = -1;
     call++;
+
 
 }
 

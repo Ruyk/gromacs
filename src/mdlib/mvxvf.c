@@ -414,7 +414,7 @@ void move_cgcm(FILE *log, const t_commrec *cr, rvec cg_cm[])
 #endif
         gmx_tx_wait(cr, GMX_LEFT);
         gmx_rx_wait(cr, GMX_RIGHT);
-#endif
+#endif // GMX_SHMEM
 
         if (debug)
         {

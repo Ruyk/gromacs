@@ -925,8 +925,13 @@ void mv_grid(t_commrec *cr, t_grid *grid)
     for (i = 0; (i < cr->nnodes-1); i++)
     {
 #ifdef GMX_SHMEM
-    	gmx_tx_rx_int_off(cr, GMX_LEFT, ci, cgindex[cur], (cgindex[cur+1] - cgindex[cur])*sizeof(*ci),
-    			             GMX_RIGHT, ci, cgindex[next], (cgindex[next+1] - cgindex[next]) * sizeof(*ci));
+    	int start_tx = cgindex[cur];
+    	int nr_tx    = cgindex[cur+1] - start;
+    	int start_rx = cgindex[next];
+    	int nr_rx       = cgindex[next+1] - start;
+     	gmx_tx_rx_int_off(cr, GMX_LEFT, ci, start_tx, (nr_tx)*sizeof(*ci),
+    			             GMX_RIGHT, ci, start_rx, (nr_rx) * sizeof(*ci));
+
 #else
         start = cgindex[cur];
         nr    = cgindex[cur+1] - start;
