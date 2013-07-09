@@ -413,7 +413,7 @@ static void dd_move_x_specat(gmx_domdec_t *dd, gmx_domdec_specat_comm_t *spac,
             if (nvec == 1)
             {
 #ifdef GMX_SHMEM
-            	dd_sendrecv_rvec_off(dd, d, dddirBackward,
+            	dd_sendrecv_rvec_swap_off(dd, d, dddirBackward,
             	                    spac->vbuf, 0, spas->nsend, x0, n, spas->nrecv);
 #else
                 dd_sendrecv_rvec(dd, d, dddirBackward,

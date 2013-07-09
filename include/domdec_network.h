@@ -110,6 +110,11 @@ void dd_sendrecv_rvec_off(const gmx_domdec_t *dd,
                       rvec *buf_s, int off_s, int n_s,
                       rvec *buf_r, int off_r, int n_r);
 
+void dd_sendrecv_rvec_swap_off(const gmx_domdec_t *dd,
+                      int ddimind, int direction,
+                      rvec *buf_s, int off_s, int n_s,
+                      rvec *buf_r, int off_r, int n_r);
+
 void dd_sendrecv_int_off(const gmx_domdec_t *dd,
                       int ddimind, int direction,
                       int *buf_s, int off_s, int n_s,
@@ -129,6 +134,7 @@ void dd_sendrecv_real_nobuf(const gmx_domdec_t *dd,
 		int ddimind, int direction,
 		real *buf_s, int n_s,
 		real *buf_r, int n_r);
+
 
 #endif
 

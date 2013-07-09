@@ -111,19 +111,7 @@ void dd_sendrecv_real_off(const gmx_domdec_t *dd,
     rank_s = dd->neighbor[ddimind][direction == dddirForward ? 0 : 1];
     rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
 
-    // shmem_barrier_all();
-    shmem_wait_for_previous_call(dd->shmem, &call, rank_s);
-
-    shmem_put_offset(&off_l, off_s, rank_s);
-    // shmem_int_sendrecv_nobuf(shmem, &off_r, 1, rank_s, &off_l, 1, rank_r);
-
-    shmem_wait_for_previous_call(dd->shmem, &call, rank_r);
-
-	shmem_real_sendrecv_nobuf(shmem, buf_s + off_s, n_s, rank_s, buf_r + off_l, n_r, rank_r);
-
-	shmem_clear_offset(&off_l, rank_s);
-
-	call++;
+    shmem_float_sendrecv_off(shmem, buf_s, off_s, n_s, rank_s, buf_r, off_r, n_r, rank_r);
 }
 
 void dd_sendrecv_int_nobuf(const gmx_domdec_t *dd,
@@ -136,32 +124,17 @@ void dd_sendrecv_int_nobuf(const gmx_domdec_t *dd,
 	rank_s = dd->neighbor[ddimind][direction == dddirForward ? 0 : 1];
 	rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
 
-	// shmem_int_put_sync(shmem, buf_r, buf_s, n_s, rank_s);
 	if (n_s)
 	{
 		shmem_int_put(buf_r, buf_s, n_s, rank_s);
-		shmem_quiet();
 	}
+	shmem_quiet();
+	shmem_fence();
 
 	shmem_set_post(shmem, rank_s);
 
 	shmem_wait_post(shmem, _my_pe());
 	shmem_clear_post(shmem, _my_pe());
-
-}
-
-void dd_sendrecv_rvec_nobuf(const gmx_domdec_t *dd,
-		int ddimind, int direction,
-		rvec *buf_s, int n_s,
-		rvec *buf_r, int n_r)
-{
-	int        rank_s, rank_r;
-	gmx_domdec_shmem_buf_t * shmem = dd->shmem;
-	rank_s = dd->neighbor[ddimind][direction == dddirForward ? 0 : 1];
-	rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
-
-	shmem_sendrecv_nobuf(shmem, buf_s, n_s * sizeof(rvec), rank_s,
-			buf_r, n_r * sizeof(rvec), rank_r);
 
 }
 
@@ -186,25 +159,22 @@ void dd_sendrecv_rvec_off(const gmx_domdec_t *dd,
                       rvec *buf_r, int off_r, int n_r)
 {
     int        rank_s, rank_r;
+#ifdef GMX_SHMEM_GETMEM
     static int off_l = -1;
     static int call = 1;
+#endif
     gmx_domdec_shmem_buf_t * shmem = dd->shmem;
 
     rank_s = dd->neighbor[ddimind][direction == dddirForward ? 0 : 1];
     rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
-
+#ifdef GMX_SHMEM_GETMEM
     SHDEBUG(" Get from rank_r %d , ptr %p. Put off %d  to proc %d \n", rank_r, buf_s, off_s,  rank_s);
-
     shmem_wait_for_previous_call(dd->shmem, &call, rank_s);
-
     shmem_int_p(&off_l, off_s, rank_s);
     shmem_quiet();
     SHDEBUG(" Waiting for fw to be != -1 \n")
-
     shmem_int_wait(&off_l, -1);
-
     shmem_wait_for_previous_call(dd->shmem, &call, rank_r);
-
 	if (n_r)
 	{
 		shmem_getmem( buf_r + off_r, buf_s + off_l, n_r * sizeof(rvec), rank_r );
@@ -216,10 +186,34 @@ void dd_sendrecv_rvec_off(const gmx_domdec_t *dd,
 
     off_l = -1;
     call++;
-
+#else
+    shmem_sendrecv_nobuf_put(shmem, *(buf_s + off_s), n_s * sizeof(rvec), rank_s,
+    							    *(buf_r + off_r), n_r * sizeof(rvec), rank_r);
+#endif
 
 }
 
+void dd_sendrecv_rvec_swap_off(const gmx_domdec_t *dd,
+                      int ddimind, int direction,
+                      rvec *buf_s, int off_s, int n_s,
+                      rvec *buf_r, int off_r, int n_r)
+{
+    int        rank_s, rank_r;
+#ifdef GMX_SHMEM_GETMEM
+    static int off_l = -1;
+    static int call = 1;
+#endif
+    gmx_domdec_shmem_buf_t * shmem = dd->shmem;
+
+    rank_s = dd->neighbor[ddimind][direction == dddirForward ? 0 : 1];
+    rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
+
+    /* shmem_float_sendrecv_nobuf(shmem, *(buf_s + off_s), n_s * sizeof(rvec), rank_s,
+    							    *(buf_r + off_r), n_r * sizeof(rvec), rank_r); */
+    shmem_float_sendrecv_off(shmem, *buf_s, off_s*DIM, n_s*DIM, rank_s,
+    		                        *buf_r, off_r*DIM, n_r*DIM, rank_r);
+
+}
 
 void dd_sendrecv2_rvec_off(const gmx_domdec_t *dd,
                        int ddimind,
@@ -348,7 +342,7 @@ void dd_sendrecv_rvec(const gmx_domdec_t *dd,
                       rvec *buf_s, int n_s,
                       rvec *buf_r, int n_r)
 {
-#ifdef GMX_SHMEM
+#ifdef GMX_SHMEM_XXX
     int        rank_s, rank_r;
     gmx_domdec_shmem_buf_t * shmem = dd->shmem;
 

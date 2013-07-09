@@ -733,6 +733,41 @@ SHDEBUG("Move X \n");
             }
             /* Send and receive the coordinates */
 #ifdef GMX_SHMEM
+            {
+            	static int rparams[2] = { -1,-1 };
+            	int tmp[2];
+            	static int call = 0;
+
+            	shmem_wait_for_previous_call(dd->shmem, &call, dd->neighbor[d][0]);
+
+            	tmp[0] = cd->bInPlace;
+            	tmp[1] = nat_tot;
+
+            	dd_sendrecv_int_nobuf(dd, d, dddirForward, tmp, 2, rparams, 2);
+
+            	SHDEBUG(" Shared in place %d (cd->bInPlace %d) (x %p, rbuf %p, rank_r %d) \n", rparams[0], cd->bInPlace, x, comm->vbuf2.v,dd->neighbor[d][1] );
+            	{
+
+            		rvec * rem_rbuf = rparams[0]?x:comm->vbuf2.v;
+
+            		dd_sendrecv_rvec_off(dd, d, dddirBackward, buf, 0, ind->nsend[nzone+1],
+            				rem_rbuf, rparams[0]?rparams[1]:0, ind->nrecv[nzone+1]);
+
+            	}
+
+            	call++;
+
+            	if (cd->bInPlace)
+            	{
+            		rbuf = x + nat_tot;
+            	}
+            	else
+            	{
+            		rbuf = comm->vbuf2.v;
+            	}
+
+            }
+#elif defined(GMX_SHMEM_GETMEM)
             if (cd->bInPlace)
             {
             	SHDEBUG(" In place \n");
@@ -744,10 +779,10 @@ SHDEBUG("Move X \n");
             else
             {
             	SHDEBUG(" Not in place \n");
-            	rbuf = comm->vbuf2.v;
             	dd_sendrecv_rvec_off(dd, d, dddirBackward,
                               buf, 0, ind->nsend[nzone+1],
-                              rbuf, 0, ind->nrecv[nzone+1]);
+                              comm->vbuf2.v, 0, ind->nrecv[nzone+1]);
+            	rbuf = comm->vbuf2.v;
             }
 #else
             if (cd->bInPlace)
@@ -838,6 +873,19 @@ void dd_move_f(gmx_domdec_t *dd, rvec f[], rvec *fshift)
             }
             /* Communicate the forces */
 #ifdef GMX_SHMEM
+            if (cd->bInPlace)
+            {
+             dd_sendrecv_rvec_off(dd, d, dddirForward,
+                 f, nat_tot, ind->nrecv[nzone+1],
+                 buf, 0, ind->nsend[nzone+1]);
+            }
+            else
+            {
+            	dd_sendrecv_rvec_off(dd, d, dddirForward,
+            			   comm->vbuf2.v, 0, ind->nrecv[nzone+1],
+            			   buf, 0, ind->nsend[nzone+1]);
+            }
+#elif defined(GMX_SHMEM_GETMEM)
             /* This sendrecv is dangerous. Since each PE may have different bInPlace values,
              * and the sendrecv_rvec_off is implemented using get, it is possible than the destination
              * PE gets the value from f but the real value is on buf.
@@ -1047,6 +1095,19 @@ void dd_atom_sum_real(gmx_domdec_t *dd, real v[])
             }
             /* Communicate the forces */
 #ifdef GMX_SHMEM
+            if (cd->bInPlace)
+            {
+              dd_sendrecv_real_off(dd, d, dddirForward,
+                             v, nat_tot, ind->nrecv[nzone+1],
+                             buf, 0, ind->nsend[nzone+1]);
+            }
+            else
+            {
+            	dd_sendrecv_real_off(dd, d, dddirForward,
+            			       &comm->vbuf2.v[0][0], 0, ind->nrecv[nzone+1],
+            	               buf, 0, ind->nsend[nzone+1]);
+            }
+#elif defined(GMX_SHMEM_GETMEM)
             /* This sendrecv is dangerous. Since each PE may have different bInPlace values,
              * and the sendrecv_rvec_off is implemented using get, it is possible than the destination
              * PE gets the value from f but the real value is on buf.
@@ -5101,7 +5162,7 @@ static void dd_redistribute_cg(FILE *fplog, gmx_large_int_t step,
 #endif
             /* Communicate cgcm and state */
 #ifdef GMX_SHMEM
-            dd_sendrecv_rvec_off(dd, d, dir,
+            dd_sendrecv_rvec_swap_off(dd, d, dir,
                              comm->cgcm_state[cdd], 0, nvs,
                              comm->vbuf.v, nvr, i);
 #else
@@ -8708,18 +8769,45 @@ static void setup_dd_communication(gmx_domdec_t *dd,
             	recv_vr = comm->vbuf2.v;
             }
 #ifdef GMX_SHMEM
-			if (cd->bInPlace)
+
+            {
+            	static int rparams[2] = { -1,-1 };
+            	int tmp[2];
+            	static int call = 0;
+
+            	shmem_wait_for_previous_call(dd->shmem, &call, dd->neighbor[dim_ind][0]);
+
+            	tmp[0] = cd->bInPlace;
+            	tmp[1] = pos_cg;
+
+            	dd_sendrecv_int_nobuf(dd, dim_ind, dddirForward, tmp, 2, rparams, 2);
+
+            	// SHDEBUG(" Shared in place %d (cd->bInPlace %d) (x %p, rbuf %p, rank_r %d) \n", rparams[0], cd->bInPlace, x, comm->vbuf2.v,dd->neighbor[d][1] );
+            	{
+
+            		rvec * rem_rbuf = rparams[0]?cg_cm:comm->vbuf2.v;
+
+            		dd_sendrecv_rvec_off(dd, dim_ind, dddirBackward, comm->vbuf.v, 0, nsend,
+            				rem_rbuf, rparams[0]?rparams[1]:0, ind->nrecv[nzone]);
+
+            	}
+
+            	call++;
+
+            }
+
+/*			if (cd->bInPlace)
 			{
-				dd_sendrecv_rvec_off(dd, dim_ind, dddirBackward,
+				dd_sendrecv_rvec_swap_off(dd, dim_ind, dddirBackward,
 						comm->vbuf.v, 0, nsend,
 						cg_cm, pos_cg, ind->nrecv[nzone]);
 			}
 			else
 			{
-				dd_sendrecv_rvec_off(dd, dim_ind, dddirBackward,
+				dd_sendrecv_rvec_swap_off(dd, dim_ind, dddirBackward,
 						comm->vbuf.v, 0, nsend,
 						comm->vbuf2.v, 0, ind->nrecv[nzone]);
-			}
+			}*/
 #else
 
 			dd_sendrecv_rvec(dd, dim_ind, dddirBackward,

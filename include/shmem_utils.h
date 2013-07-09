@@ -221,6 +221,9 @@ void shmem_float_sendrecv_off(gmx_domdec_shmem_buf_t* shmem, real* send_buf, int
 		int send_bufsize, int send_nodeid, real* recv_buf, int off_r,
 		int recv_bufsize, int recv_nodeid);
 
+void shmem_rvec_sendrecv_off(gmx_domdec_shmem_buf_t* shmem, rvec* send_buf, int off_s,
+		int send_bufsize, int send_nodeid, rvec* recv_buf, int off_r,
+		int recv_bufsize, int recv_nodeid);
 
 #endif /* GMX_SHMEM */
 
