@@ -221,9 +221,22 @@ void shmem_float_sendrecv_off(gmx_domdec_shmem_buf_t* shmem, real* send_buf, int
 		int send_bufsize, int send_nodeid, real* recv_buf, int off_r,
 		int recv_bufsize, int recv_nodeid);
 
-void shmem_rvec_sendrecv_off(gmx_domdec_shmem_buf_t* shmem, rvec* send_buf, int off_s,
-		int send_bufsize, int send_nodeid, rvec* recv_buf, int off_r,
+void shmem_mem_sendrecv_swap_off(gmx_domdec_shmem_buf_t* shmem, void* send_buf, int off_s,
+		int send_bufsize, int send_nodeid, void* recv_buf, int off_r,
 		int recv_bufsize, int recv_nodeid);
+
+void shmem_mem_sendrecv_swap_off_nocall(gmx_domdec_shmem_buf_t* shmem, void* send_buf, int off_s,
+			int send_bufsize, int send_nodeid, void* recv_buf, int off_r,
+			int recv_bufsize, int recv_nodeid);
+
+void shmem_mem_sendrecv_swap_off_call(gmx_domdec_shmem_buf_t* shmem, void* send_buf, int off_s,
+			int send_bufsize, int send_nodeid, void* recv_buf, int off_r,
+			int recv_bufsize, int recv_nodeid);
+
+void shmem_mem_sendrecv_swap_off_base(gmx_domdec_shmem_buf_t* shmem, void* send_buf, int off_s,
+				int send_bufsize, int send_nodeid, void* recv_buf, int off_r,
+				int recv_bufsize, int recv_nodeid, int * call);
+
 
 #endif /* GMX_SHMEM */
 

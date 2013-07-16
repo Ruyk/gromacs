@@ -513,7 +513,7 @@ void dd_sendrecv_real(const gmx_domdec_t *dd,
 
 void dd_bcast(gmx_domdec_t *dd, int nbytes, void *data)
 {
-#ifdef GMX_SHMEM
+#ifdef GMX_SHMEM_COLECTIVES
 	static long pSync[_SHMEM_BCAST_SYNC_SIZE];
 	void * buf;
 	gmx_domdec_shmem_buf_t * shmem = dd->shmem;
@@ -562,7 +562,7 @@ void dd_bcast(gmx_domdec_t *dd, int nbytes, void *data)
 
 void dd_bcastc(gmx_domdec_t *dd, int nbytes, void *src, void *dest)
 {
-#ifdef GMX_SHMEM
+#ifdef GMX_SHMEM_COLECTIVES
 	static long pSync[_SHMEM_BCAST_SYNC_SIZE];
 	void * buf;
 	gmx_domdec_shmem_buf_t * shmem = dd->shmem;
@@ -612,7 +612,7 @@ void dd_bcastc(gmx_domdec_t *dd, int nbytes, void *src, void *dest)
 
 void dd_scatter(gmx_domdec_t *dd, int nbytes, void *src, void *dest)
 {
-#ifdef GMX_SHMEM
+#ifdef GMX_SHMEM_COLECTIVES
 	int i;
 	gmx_domdec_shmem_buf_t * shmem = dd->shmem;
 
@@ -647,7 +647,7 @@ void dd_scatter(gmx_domdec_t *dd, int nbytes, void *src, void *dest)
 
 void dd_gather(gmx_domdec_t *dd, int nbytes, void *src, void *dest)
 {
-#ifdef GMX_SHMEM
+#ifdef GMX_SHMEM_COLECTIVES
 	gmx_domdec_shmem_buf_t * shmem = dd->shmem;
 	int size;
 
@@ -673,7 +673,7 @@ void dd_scatterv(gmx_domdec_t *dd,
                  int *scounts, int *disps, void *sbuf,
                  int rcount, void *rbuf)
 {
-#ifdef GMX_SHMEM
+#ifdef GMX_SHMEM_COLECTIVES
 	int i, max_count;
 	gmx_domdec_shmem_buf_t * shmem = dd->shmem;
 	SHDEBUG(" ScatterV %p (rcount %d) \n", shmem->byte_buf, rcount);
@@ -744,7 +744,7 @@ void dd_gatherv(gmx_domdec_t *dd,
                 int scount, void *sbuf,
                 int *rcounts, int *disps, void *rbuf)
 {
-#ifdef GMX_SHMEM
+#ifdef GMX_SHMEM_COLECTIVES
 		int i, max_count;
 		gmx_domdec_shmem_buf_t * shmem = dd->shmem;
 		const int npes = _num_pes();
