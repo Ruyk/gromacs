@@ -183,7 +183,8 @@ typedef struct {
 
 #ifdef GMX_SHMEM
     gmx_domdec_shmem_buf_t * shmem;
-    int     *group_barrier;
+    int     *acum_count;
+    int     max_send;
 #endif
 
     int     *node_dest;     /* The nodes to send x and q to with DD */
@@ -580,6 +581,18 @@ static void pme_calc_pidx_wrapper(int natoms, matrix recipbox, rvec x[],
             atc->count_thread[0][slab] += atc->count_thread[thread][slab];
         }
     }
+#ifdef GMX_SHMEM
+    {
+    	// Maximum size of the send buffer during the redistribution
+    	int i;
+    	int tmp = 0;
+    	for (i = 0; i < atc->nslab; i++)
+    	{
+    		tmp += atc->count_thread[0][0];
+    	}
+    	atc->max_send = shmem_get_max_alloc(atc->shmem, tmp);
+    }
+#endif
 }
 
 static void realloc_splinevec(splinevec th, real **ptr_z, int nalloc)
@@ -621,35 +634,35 @@ static void pme_realloc_atomcomm_things(pme_atomcomm_t *atc)
 {
     int nalloc_old, i, j, nalloc_tpl;
 
-#ifdef GMX_SHMEM
+/* #ifdef GMX_SHMEM
     int max_n = shmem_get_max_alloc(atc->shmem, atc->n);
     if (max_n > atc->nalloc || atc->nalloc == 0)
     {
-#else
+#else */
     /* We have to avoid a NULL pointer for atc->x to avoid
      * possible fatal errors in MPI routines.
      */
     if (atc->n > atc->nalloc || atc->nalloc == 0)
     {
-#endif
+// #endif
         nalloc_old  = atc->nalloc;
-#ifdef GMX_SHMEM
+/* #ifdef GMX_SHMEM
         atc->nalloc = over_alloc_dd(max(max_n, 1));
-#else
+#else */
         atc->nalloc = over_alloc_dd(max(atc->n, 1));
-#endif
+// #endif
 
         if (atc->nslab > 1)
         {
-#ifdef GMX_SHMEM
+/* #ifdef GMX_SHMEM
         	sh_srenew(atc->x, atc->nalloc);
         	sh_srenew(atc->q, atc->nalloc);
         	sh_srenew(atc->f, atc->nalloc);
-#else
+#else */
         	srenew(atc->x, atc->nalloc);
             srenew(atc->q, atc->nalloc);
             srenew(atc->f, atc->nalloc);
-#endif
+// #endif
             for (i = nalloc_old; i < atc->nalloc; i++)
             {
                 clear_rvec(atc->f[i]);
@@ -657,13 +670,13 @@ static void pme_realloc_atomcomm_things(pme_atomcomm_t *atc)
         }
         if (atc->bSpread)
         {
-#ifdef GMX_SHMEM
+/* #ifdef GMX_SHMEM
             sh_srenew(atc->fractx, atc->nalloc);
             sh_srenew(atc->idx, atc->nalloc);
-#else
+#else */
             srenew(atc->fractx, atc->nalloc);
             srenew(atc->idx, atc->nalloc);
-#endif
+// #endif
             if (atc->nthread > 1)
             {
                 srenew(atc->thread_idx, atc->nalloc);
@@ -988,11 +1001,19 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
                              pme_atomcomm_t *atc)
 {
     int *commnode, *buf_index;
-    int  nnodes_comm, nsend, local_pos, buf_pos, node, scount, rcount;
-    int i;
 #ifdef GMX_SHMEM
-    static int shift = 0;
+    int  nnodes_comm, nsend, buf_pos, node, scount, rcount;
+#ifdef SHMEM_PME_USE_PUT
+    static int local_pos = 0;
+#else
+    int local_pos = 0;
 #endif
+
+#else
+    int  nnodes_comm, nsend, local_pos, buf_pos, node, scount, rcount;
+#endif
+    int i;
+
 
     commnode  = atc->node_dest;
     buf_index = atc->buf_index;
@@ -1016,10 +1037,10 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
         }
 #ifdef GMX_SHMEM
         {
-        	int max_nalloc = shmem_get_max_alloc(atc->shmem, nsend);
-        	if (max_nalloc > pme->buf_nalloc)
+        	// int max_nalloc = shmem_get_max_alloc(atc->shmem, nsend);
+        	if (atc->max_send > pme->buf_nalloc)
         	{
-        		 pme->buf_nalloc = over_alloc_dd(max_nalloc);
+        		 pme->buf_nalloc = over_alloc_dd(atc->max_send);
         		 sh_srenew(pme->bufv, pme->buf_nalloc);
         		 sh_srenew(pme->bufr, pme->buf_nalloc);
         	}
@@ -1034,6 +1055,30 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
 #endif
 
         atc->n = atc->count[atc->nodeid];
+#ifdef GMX_SHMEM
+        for (i = 0; i < nnodes_comm; i++)
+        {
+        	/* Get the num of elements to receive by this PE */
+        	int src  = pme_get_global_id(atc,atc->node_src[i]);
+        	int rcount = shmem_int_g(&atc->count[atc->nodeid], src);
+        	atc->rcount[i] = rcount;
+        	atc->n += rcount;
+#ifndef SHMEM_PME_USE_PUT
+        	/* Pre-compute the offset of the send buffer buf_pos in each pulse */
+        	if (i > 0)
+        	{
+        		scount = atc->count[commnode[i-1]];
+        		atc->acum_count[i] = atc->acum_count[i-1] + scount;
+        	}
+        	else
+        	{
+        		atc->acum_count[i] = 0;
+        	}
+#endif
+        }
+
+#else
+
         for (i = 0; i < nnodes_comm; i++)
         {
             scount = atc->count[commnode[i]];
@@ -1043,22 +1088,17 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
                 fprintf(debug, "dimind %d PME node %d send to node %d: %d\n",
                         atc->dimind, atc->nodeid, commnode[i], scount);
             }
-#ifdef GMX_SHMEM
-            pme_dd_sendrecv_int(atc, FALSE, i,
-                                     &scount, sizeof(int),
-                                     &atc->rcount[i], sizeof(int));
-#else
             pme_dd_sendrecv(atc, FALSE, i,
                             &scount, sizeof(int),
                             &atc->rcount[i], sizeof(int));
-#endif
             atc->n += atc->rcount[i];
         }
-
+#endif
         pme_realloc_atomcomm_things(atc);
     }
-    SHDEBUG(" After the int comm \n")
+
     local_pos = 0;
+
     for (i = 0; i < n; i++)
     {
         node = atc->pd[i];
@@ -1084,91 +1124,72 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
         }
     }
 
-    buf_pos = 0;
+#ifdef GMX_SHMEM
+    {
+    	static int buf_pos = 0;
+    	buf_pos = 0;
+    	MPI_Barrier(atc->mpi_comm);
+    	for (i = 0; i < nnodes_comm; i++)
+    	{
+    		int dest = pme_get_global_id(atc,atc->node_dest[i]);
+    		int src  = pme_get_global_id(atc,atc->node_src[i]);
+    		int rem_pos = 0;
+    		scount = atc->count[commnode[i]];
+    		rcount = atc->rcount[i];
+#ifdef SHMEM_PME_USE_PUT
+    		MPI_Barrier(atc->mpi_comm);
+    		if (scount > 0)
+    		{
+    			rem_pos = shmem_int_g(&local_pos, dest);
+    			if (bX)
+    			{
+    				shmem_putmem(&atc->x[rem_pos][0], &pme->bufv[buf_pos][0], scount * sizeof(rvec), dest);
+    			}
+    			shmem_float_put(&atc->q[rem_pos], &pme->bufr[buf_pos], scount, dest);
+    			buf_pos   += scount;
+    			shmem_int_add(&local_pos, scount, dest);
+    		}
+    		MPI_Barrier(atc->mpi_comm);
+#else
+    		if (rcount > 0)
+    		{
+    			int rem_buf_pos = shmem_int_g(&atc->acum_count[i], src);
+    			if (bX)
+    			{
+    				shmem_getmem(&atc->x[local_pos][0], &pme->bufv[rem_buf_pos][0], rcount * sizeof(rvec), src);
+    			}
+    			shmem_float_get(&atc->q[local_pos], &pme->bufr[rem_buf_pos], rcount, src);
+    			local_pos += atc->rcount[i];
+    		}
+#endif
+    	}
+    }
 
+#else
     for (i = 0; i < nnodes_comm; i++)
     {
         scount = atc->count[commnode[i]];
         rcount = atc->rcount[i];
-#ifdef GMX_SHMEM
-        {
-        	int dest = atc->node_dest[i];
-        	int src  = atc->node_src[i];
-        	/* shmem_wait_for_previous_call(atc->shmem, &shift, dest);
-        	shmem_wait_for_previous_call(atc->shmem, &shift, src); */
-        	SHDEBUG(" Inside loop, i = %d, scount %d, rcount %d dest: %d src: %d \n", i, scount, rcount, dest, src);
-        }
-#endif
-
         if (scount > 0 || rcount > 0)
         {
             if (bX)
             {
-            	 SHDEBUG(" First sendrecv \n");
                 /* Communicate the coordinates */
-#ifdef GMX_SHMEM
-                pme_dd_sendrecv_off(atc, FALSE, i,
-                                pme->bufv, buf_pos * sizeof(rvec), scount*sizeof(rvec),
-                                atc->x, local_pos * sizeof(rvec), rcount*sizeof(rvec));
-#else
                 pme_dd_sendrecv(atc, FALSE, i,
                                 &pme->bufv[buf_pos], scount*sizeof(rvec),
                                 &atc->x[local_pos], rcount*sizeof(rvec));
-#endif
             }
-        }
-         // shmem_barrier_all();
-#ifdef GMX_SHMEM
-     /*   {
-                	int dest = atc->node_dest[i];
-                	int src  = atc->node_src[i];
-                	shift++;
-                	shmem_wait_for_previous_call(atc->shmem, &shift, dest);
-                	shmem_wait_for_previous_call(atc->shmem, &shift, src);
-                	SHDEBUG(" Inside loop, i = %d, scount %d, rcount %d dest: %d src: %d \n", i, scount, rcount, dest, src);
-                }*/
-#endif
-        if (scount > 0 || rcount > 0)
-                    {
-            SHDEBUG(" Second sendrecv \n");
             /* Communicate the charges */
-#ifdef GMX_SHMEM
-            pme_dd_sendrecv_off(atc, FALSE, i,
-                            pme->bufr, buf_pos * sizeof(real), scount * sizeof(real),
-                            atc->q, local_pos * sizeof(real), rcount * sizeof(real));
-#else
             pme_dd_sendrecv(atc, FALSE, i,
                             pme->bufr + buf_pos, scount*sizeof(real),
                             atc->q + local_pos, rcount*sizeof(real));
-#endif
             buf_pos   += scount;
             local_pos += atc->rcount[i];
             }
-#ifdef GMX_SHMEM
-       /* {
-        int k;
 
-        shmem_int_inc(atc->group_barrier, pme_get_global_id(atc, atc->nodeid));
-
-        for (k = 0; k < atc->nslab; k++)
-        {
-        	int node_id = pme_get_global_id(atc, k);
-        	while ( shmem_int_g(atc->group_barrier, node_id) != atc->group_barrier ) { shmem_quiet(); }
-        }
-        //shmem_wait_for_previous_call(atc->shmem, &shift, pme_get_global_id(atc, ((atc->nodeid+1)>(atc->nslab-1))?0:atc->nodeid+1) );
-        //shmem_int_p(&shift, -1, pme_get_global_id(atc, ((atc->nodeid-1)<0)?(atc->nslab-1):(atc->nodeid-1)) );
-       // shmem_int_wait_until(&shift, SHMEM_CMP_EQ, -1);
-
-        SHDEBUG(" dd_pmeredist_x_q nodes_com %d  scount %d rcount %d For END \n", nnodes_comm, scount, rcount);
-        }
-        printf(" Global barrier, PE %d shift %d \n", _my_pe(), shift); */
-        MPI_Barrier(atc->mpi_comm);
-#endif
     }
-    // shmem_barrier_all();
+#endif
 
-
-    SHDEBUG(" dd_pmeredist_x_q END nodes_comm %d \n",nnodes_comm);
 }
 
 static void dd_pmeredist_f(gmx_pme_t pme, pme_atomcomm_t *atc,
@@ -1192,7 +1213,7 @@ static void dd_pmeredist_f(gmx_pme_t pme, pme_atomcomm_t *atc,
         if (scount > 0 || rcount > 0)
         {
             /* Communicate the forces */
-#ifdef GMX_SHMEM
+#ifdef GMX_SHMEM_XXX
         	 pme_dd_sendrecv_off(atc, TRUE, i,
         	                 atc->f, local_pos*sizeof(rvec), scount*sizeof(rvec),
         	                 pme->bufv, buf_pos*sizeof(rvec), rcount*sizeof(rvec));
@@ -1206,7 +1227,7 @@ static void dd_pmeredist_f(gmx_pme_t pme, pme_atomcomm_t *atc,
         buf_index[commnode[i]] = buf_pos;
         buf_pos               += rcount;
 #ifdef GMX_SHMEM
-        shmem_barrier_all();
+        // shmem_barrier_all();
 #endif
     }
 
@@ -3053,12 +3074,27 @@ static void init_atomcomm(gmx_pme_t pme, pme_atomcomm_t *atc, t_commrec *cr,
         setup_coordinate_communication(atc);
 
         snew(atc->count_thread, pme->nthread);
+#ifdef GMX_SHMEM
+        for (thread = 0; thread < pme->nthread; thread++)
+        {
+            sh_snew(atc->count_thread[thread], atc->nslab);
+        }
+        /* TODO: Multithread code */
+        sh_snew(atc->acum_count, atc->nslab);
+#else
         for (thread = 0; thread < pme->nthread; thread++)
         {
             snew(atc->count_thread[thread], atc->nslab);
         }
+#endif
+
         atc->count = atc->count_thread[0];
+#ifdef GMX_SHMEM_XXX
+        // TODO: This may be removed if count is in shared mem
+        sh_snew(atc->rcount, atc->nslab);
+#else
         snew(atc->rcount, atc->nslab);
+#endif
         snew(atc->buf_index, atc->nslab);
     }
 
@@ -3082,7 +3118,6 @@ static void init_atomcomm(gmx_pme_t pme, pme_atomcomm_t *atc, t_commrec *cr,
 #ifdef GMX_SHMEM
     snew(atc->shmem, 1);
     init_shmem_buf(atc->shmem);
-    sh_snew(atc->group_barrier, 1);
 #endif
 }
 
