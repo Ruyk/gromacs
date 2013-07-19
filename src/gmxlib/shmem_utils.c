@@ -302,6 +302,7 @@ int get_max_alloc_shmem(int local_value)
 
 int shmem_get_max_alloc(gmx_domdec_shmem_buf_t * shmem, int local_value)
 {
+
 	static int global_max = 0;
 	static int call = 0;
 	static int local_max = 0;
@@ -350,136 +351,6 @@ void * sh_renew_buf(gmx_domdec_shmem_buf_t * shmem, void * buf, int * alloc, con
 	}
 	p = buf;
    	return p;
-}
-
-void shmem_sync_pair(gmx_domdec_shmem_buf_t* shmem, int rank_s, int rank_r)
-{
-	static int token_a = -1;
-	static int token_b = -1;
-
-	shmem_int_p(&token_a, 1, rank_s);
-	shmem_quiet();
-	shmem_int_wait(&token_a, -1);
-
-	shmem_int_p(&token_b, 1, rank_r);
-	shmem_quiet();
-	token_a = -1;
-	shmem_int_wait(&token_b, -1);
-
-    token_b = -1;
-}
-
-/* SHMEM MPI replacements without buffering
- * ==============================================
- */
-void shmem_real_sendrecv_nobuf(gmx_domdec_shmem_buf_t* shmem, real* buf_s, int n_s,
-		int rank_s, real* buf_r, int n_r, int rank_r)
-{
-	static int remote_size = -1;
-	SHDEBUG(" SendRecv (S: %d,R: %d) using SHMEM (n_s %d, n_r %d) \n", rank_s,
-			rank_r, n_s, n_r);
-	// shrenew(shmem, shmem->real_buf, &(shmem->real_alloc), n_s);
-	// shmem_barrier_all();
-	shmem_lock(shmem, rank_s);
-
-	shmem_int_p(&remote_size, n_r, rank_r);
-	shmem_sync_pair(shmem, rank_s, rank_r);
-
-	if (min(remote_size,n_s)) {
-		// Put buf_is in rank_s
-		//               T       S     Len   Pe
-		shmem_float_put(buf_r, buf_s, min(remote_size,n_s), rank_s);
-	}
-
-	shmem_sync_pair(shmem, rank_s, rank_r);
-//	shmem_set_post(shmem, rank_s);
-//	shmem_wait_post(shmem, _my_pe());
-//	/* if (n_r) {
-//		SHDEBUG(" Updating reception buffer \n");
-//		memcpy(buf_r, shmem->real_buf, n_r * sizeof(real));
-//	} */
-//	shmem_set_done(shmem, rank_r);
-//	shmem_clear_post(shmem, _my_pe());
-//	shmem_wait_done(shmem, _my_pe());
-//	shmem_clear_done(shmem, _my_pe());
-	shmem_unlock(shmem, rank_s);
-}
-
-void shmem_int_sendrecv_nobuf(gmx_domdec_shmem_buf_t* shmem, int* buf_s, int n_s,
-		int rank_s, int* buf_r, int n_r, int rank_r)
-{
-	static int remote_size = -1;
-	int data_to_send;
-	SHDEBUG(" SendRecv (S: %d,R: %d) using SHMEM (n_s %d, n_r %d) \n", rank_s,
-			rank_r, n_s, n_r);
-
-	// shmem_barrier_all();
-	shmem_lock(shmem, rank_s);
-
-    shmem_int_p(&remote_size, n_r, rank_r);
-    shmem_sync_pair(shmem, rank_s, rank_r);
-
-
-	if (min(remote_size,n_s)) {
-		// Put buf_is in rank_s
-		//               T       S     Len   Pe
-		shmem_int_put(buf_r, buf_s, min(n_s,remote_size), rank_s);
-		shmem_quiet();
-		SHDEBUG(" Data posted by %d to %d \n", _my_pe(), rank_s);
-	}
-	shmem_set_post(shmem, rank_s);
-	SHDEBUG(" Event posted to %d \n", rank_s);
-	// Receive data
-	shmem_wait_post(shmem, _my_pe());
-	SHDEBUG(" Waiting for event from %d \n", _my_pe());
-	/* if (n_r) {
-		SHDEBUG(" Updating reception buffer from %d \n", rank_r);
-		memcpy(buf_r, shmem->int_buf, n_r * sizeof(int));
-		SHDEBUG(" Copied %p into %p, size %ld, from %d \n", shmem->int_buf,
-				buf_r, n_r * sizeof(int), rank_r);
-	} */
-	shmem_set_done(shmem, rank_r);
-	shmem_clear_post(shmem, _my_pe());
-	SHDEBUG(" Event of %d cleared \n", _my_pe());
-	shmem_wait_done(shmem, _my_pe());
-	shmem_clear_done(shmem, _my_pe());
-	shmem_unlock(shmem, rank_s);
-}
-
-void shmem_rvec_sendrecv_nobuf(gmx_domdec_shmem_buf_t* shmem, rvec* buf_s, int n_s,
-		int rank_s, rvec* buf_r, int n_r, int rank_r)
-{
-	static int remote_size = -1;
-	shmem_lock(shmem, rank_s);
-
-	shmem_int_p(&remote_size, n_r, rank_r);
-	shmem_sync_pair(shmem, rank_s, rank_r);
-
-	SHDEBUG(" SendRecv (S: %d,R: %d) using SHMEM (n_s %d, n_r %d) \n", rank_s,
-			rank_r, n_s, n_r);
-    SHDEBUG(" Remote size %d , buf_s %p buf_r %p \n", remote_size, buf_s, buf_r);
-
-	if (min(remote_size,n_s))
-	{
-		int i = 0;
-		// Put buf_is in rank_s
-		//               T       S     Len   Pe
-		shmem_float_put((real *) buf_r, (real *) buf_s, min(remote_size,n_s) * DIM,
-				rank_s);
-		SHDEBUG(" Putting n_s  %d elements to rank_s %d \n",
-				min(remote_size,n_s), rank_s);
-	}
-	shmem_set_post(shmem, rank_s);
-	shmem_wait_post(shmem, _my_pe());
-	/* if (n_r) {
-		SHDEBUG(" Updating reception buffer \n");
-		memcpy(buf_r, shmem->rvec_buf, n_r * sizeof(rvec));
-	} */
-	shmem_set_done(shmem, rank_r);
-	shmem_clear_post(shmem, _my_pe());
-	shmem_wait_done(shmem, _my_pe());
-	shmem_clear_done(shmem, _my_pe());
-	shmem_unlock(shmem, rank_s);
 }
 
 
