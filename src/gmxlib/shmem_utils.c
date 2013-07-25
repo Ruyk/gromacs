@@ -464,9 +464,9 @@ shmem_clear_post(shmem, _my_pe());
 
 void shmem_wait_for_previous_call(gmx_domdec_shmem_buf_t * shmem, int * call, int rank)
 {
-	int rcall;
 	if (!call) return;
-	while ( (rcall = shmem_int_g(call, rank)) != (*call) ) { usleep(SHMEM_SLEEP_TIME); };
+	while ( (shmem_int_g(call, rank)) != (*call) ) { sched_yield(); /*usleep(SHMEM_SLEEP_TIME);*/ };
+	// while ( (shmem_int_cswap(call, *call, *call, rank)) != (*call)  ) { shmem_fence(); sched_yield(); }
 }
 
 
