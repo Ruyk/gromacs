@@ -1219,7 +1219,7 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
 
     nsend = 0;
 
-
+    // MPI_Barrier(atc->mpi_comm);
 
 
     for (i = 0; i < nnodes_comm; i++)
@@ -1276,10 +1276,8 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
 			rcount = shmem_int_g(&atc->count[atc->nodeid], src);
 			atc->rcount[i] = rcount;
 			atc->n += rcount;
-
-			used += atc->count[commnode[i]];
 		}
-		SHDEBUG(" Total that will be used %d \n", used);
+
 
 #ifdef GMX_SHMEM_XXX
     {
@@ -1321,8 +1319,6 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
         pme_realloc_atomcomm_things(atc);
     }
 
-
-
     local_pos = 0;
 
     for (i = 0; i < n; i++)
@@ -1355,6 +1351,12 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
     {
     	static int buf_pos = 0;
     	buf_pos = 0;
+
+        for (i = 0; i < nnodes_comm; i++)
+        {
+        	used += atc->count[commnode[i]];
+        }
+        SHDEBUG(" Total that will be used %d \n", used);
 
     	shmem_int_p(&ready, 1, _my_pe());
     	shmem_quiet();
@@ -1436,18 +1438,19 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
 #endif
 
 #ifdef GMX_SHMEM
-    // MPI_Barrier(atc->mpi_comm);
+
     // call++;
     // shmem_int_inc(&call, _my_pe());
     // shmem_quiet();
-    {
+    // MPI_Barrier(atc->mpi_comm);
+     {
     	shmem_fence();
     	while (shmem_int_g(&used, _my_pe()))
     	{
     		sched_yield();
-    		// SHDEBUG(" Used %d \n", used);
+    		SHDEBUG(" Used %d \n", used);
     	}
-
+    	SHDEBUG(" Value for used is 0, disable buffers \n")
     // Invalidate the buffer data
     shmem_int_p(&ready, 0, _my_pe());
     shmem_quiet();
@@ -4953,9 +4956,7 @@ int gmx_pme_do(gmx_pme_t pme,
                 }
                 atc->maxshift = (atc->dimind == 0 ? maxshift_x : maxshift_y);
 
-                // MPI_Barrier(cr->mpi_comm_mygroup);
                 pme_calc_pidx_wrapper(n_d, pme->recipbox, x_d, atc);
-                // MPI_Barrier(cr->mpi_comm_mygroup);
                 where();
 
                 GMX_BARRIER(cr->mpi_comm_mygroup);
