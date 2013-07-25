@@ -605,6 +605,24 @@ static void pme_calc_pidx_wrapper(int natoms, matrix recipbox, rvec x[],
     	}
 #endif
     	atc->max_send = 10000;
+    	 {
+    			int i, scount;
+    	    	for (i = 0; i < atc->nslab; i++)
+    	    	{
+
+    	    		/* Pre-compute the offset of the send buffer buf_pos in each pulse */
+    	    		if (i > 0)
+    	    		{
+    	    			scount = atc->count_thread[0][atc->node_dest[i-1]];
+    	    			atc->acum_count[i] = atc->acum_count[i-1] + scount;
+    	    		}
+    	    		else
+    	    		{
+    	    			atc->acum_count[i] = 0;
+    	    		}
+    	    	}
+    	    }
+
     	MPI_Barrier(atc->mpi_comm);
     }
 #endif
@@ -1180,6 +1198,8 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
 #ifdef GMX_SHMEM
     int  nnodes_comm, nsend, buf_pos, node, scount, rcount;
     static int call = 0;
+    static int used = 0;
+    static int ready = 0;
 #ifdef SHMEM_PME_USE_PUT
     static int local_pos = 0;
 #else
@@ -1198,6 +1218,8 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
     nnodes_comm = min(2*atc->maxshift, atc->nslab-1);
 
     nsend = 0;
+
+
 
 
     for (i = 0; i < nnodes_comm; i++)
@@ -1250,13 +1272,16 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
 			int src  = pme_get_global_id(atc,atc->node_src[i]);
 			int rcount;
 			SHDEBUG(" Waiting for proc %d to be in call %d\n", src, call);
-			shmem_wait_for_previous_call(atc->shmem, &call, src);
+			// shmem_wait_for_previous_call(atc->shmem, &call, src);
 			rcount = shmem_int_g(&atc->count[atc->nodeid], src);
 			atc->rcount[i] = rcount;
 			atc->n += rcount;
-		}
 
-#ifdef GMX_SHMEM
+			used += atc->count[commnode[i]];
+		}
+		SHDEBUG(" Total that will be used %d \n", used);
+
+#ifdef GMX_SHMEM_XXX
     {
 
     	for (i = 0; i < nnodes_comm; i++)
@@ -1330,7 +1355,11 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
     {
     	static int buf_pos = 0;
     	buf_pos = 0;
-    	MPI_Barrier(atc->mpi_comm);
+
+    	shmem_int_p(&ready, 1, _my_pe());
+    	shmem_quiet();
+
+    	// MPI_Barrier(atc->mpi_comm);
     	for (i = 0; i < nnodes_comm; i++)
     	{
     		int dest = pme_get_global_id(atc,atc->node_dest[i]);
@@ -1355,6 +1384,13 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
 #else
     		if (rcount > 0)
     		{
+    			{
+    				shmem_fence();
+    				while (!shmem_int_g(&ready, src))
+    				{
+    					sched_yield();
+    				}
+    			}
 
     			int rem_buf_pos = shmem_int_g(&atc->acum_count[i], src);
 
@@ -1364,6 +1400,11 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
     			}
     			shmem_float_get(&atc->q[local_pos], &pme->bufr[rem_buf_pos], rcount, src);
     			local_pos += atc->rcount[i];
+
+    			{
+    				SHDEBUG(" Substracting rcount %d \n", rcount);
+    				shmem_int_add(&used, (-1) * rcount, src);
+    			}
     		}
 #endif
     	}
@@ -1395,7 +1436,23 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
 #endif
 
 #ifdef GMX_SHMEM
-    call++;
+    // MPI_Barrier(atc->mpi_comm);
+    // call++;
+    // shmem_int_inc(&call, _my_pe());
+    // shmem_quiet();
+    {
+    	shmem_fence();
+    	while (shmem_int_g(&used, _my_pe()))
+    	{
+    		sched_yield();
+    		// SHDEBUG(" Used %d \n", used);
+    	}
+
+    // Invalidate the buffer data
+    shmem_int_p(&ready, 0, _my_pe());
+    shmem_quiet();
+
+    }
 #endif
 
 }
@@ -4896,7 +4953,9 @@ int gmx_pme_do(gmx_pme_t pme,
                 }
                 atc->maxshift = (atc->dimind == 0 ? maxshift_x : maxshift_y);
 
+                // MPI_Barrier(cr->mpi_comm_mygroup);
                 pme_calc_pidx_wrapper(n_d, pme->recipbox, x_d, atc);
+                // MPI_Barrier(cr->mpi_comm_mygroup);
                 where();
 
                 GMX_BARRIER(cr->mpi_comm_mygroup);
