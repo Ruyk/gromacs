@@ -276,24 +276,24 @@ void dd_sendrecv2_rvec_off(const gmx_domdec_t *dd,
 
 
 
-			/* Sender: Put min(rsize, send_bufsize) elemens of send_buf on recv_buf + offset */
+			/* Sender: Put min(rsize, send_bufsize) elements of send_buf on recv_buf + offset */
 			if (min(rem_size_fw, n_s_fw)) {
 				SHDEBUG(
 						" Putting data on recv_nodeid, rem off %d send off %d, recv ptr %p send ptr %p \n",
 						rem_off_fw, off_s_fw, buf_r_fw, buf_s_fw);
-				shmem_float_put(((real *) buf_r_fw + (rem_off_fw*DIM)),
+				shmem_float_put_nb(((real *) buf_r_fw + (rem_off_fw*DIM)),
 						((real *) buf_s_fw + (off_s_fw*DIM)), min(rem_size_fw, n_s_fw)*DIM,
-						rank_s_fw);
+						rank_s_fw, NULL);
 			}
 
-			/* Sender: Put min(rsize, send_bufsize) elemens of send_buf on recv_buf + offset */
+			/* Sender: Put min(rsize, send_bufsize) elements of send_buf on recv_buf + offset */
 			if (min(rem_size_bw, n_s_bw)) {
 				SHDEBUG(
 						" Putting data on recv_nodeid, rem off %d send off %d, recv ptr %p send ptr %p \n",
 						rem_off_bw, off_s_bw, buf_r_bw, buf_s_bw);
-				shmem_float_put(((real *) buf_r_bw + (rem_off_bw*DIM)),
+				shmem_float_put_nb(((real *) buf_r_bw + (rem_off_bw*DIM)),
 						((real *) buf_s_bw + off_s_bw), min(rem_size_bw, n_s_bw)*DIM,
-						rank_s_bw);
+						rank_s_bw, NULL);
 			}
 			shmem_quiet();
 
