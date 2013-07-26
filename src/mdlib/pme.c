@@ -1219,9 +1219,6 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
 
     nsend = 0;
 
-    // MPI_Barrier(atc->mpi_comm);
-
-
     for (i = 0; i < nnodes_comm; i++)
     {
         buf_index[commnode[i]] = nsend;
@@ -1240,7 +1237,9 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
         }
 #ifdef GMX_SHMEM
         {
+#ifdef GMX_SHMEM_NO_MAX_ESTIMATION
         	// int max_nalloc = shmem_get_max_alloc(atc->shmem, nsend);
+#endif
         	if (atc->max_send < nsend)
         	{
         		/* max_send is not big enough, abort. User need to change the default value for max_send */
@@ -1265,7 +1264,6 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
         atc->n = atc->count[atc->nodeid];
 #ifdef GMX_SHMEM
 
-    	// MPI_Barrier(atc->mpi_comm);
 		for (i = 0; i < nnodes_comm; i++)
 		{
 			/* Get the num of elements to receive by this PE */
@@ -1277,27 +1275,6 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
 			atc->rcount[i] = rcount;
 			atc->n += rcount;
 		}
-
-
-#ifdef GMX_SHMEM_XXX
-    {
-
-    	for (i = 0; i < nnodes_comm; i++)
-    	{
-
-    		/* Pre-compute the offset of the send buffer buf_pos in each pulse */
-    		if (i > 0)
-    		{
-    			scount = atc->count[commnode[i-1]];
-    			atc->acum_count[i] = atc->acum_count[i-1] + scount;
-    		}
-    		else
-    		{
-    			atc->acum_count[i] = 0;
-    		}
-    	}
-    }
-#endif
 
 #else
 
@@ -1438,12 +1415,7 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
 #endif
 
 #ifdef GMX_SHMEM
-
-    // call++;
-    // shmem_int_inc(&call, _my_pe());
-    // shmem_quiet();
-    // MPI_Barrier(atc->mpi_comm);
-     {
+    {
     	shmem_fence();
     	while (shmem_int_g(&used, _my_pe()))
     	{
@@ -1454,7 +1426,6 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
     // Invalidate the buffer data
     shmem_int_p(&ready, 0, _my_pe());
     shmem_quiet();
-
     }
 #endif
 
@@ -1467,11 +1438,24 @@ static void dd_pmeredist_f(gmx_pme_t pme, pme_atomcomm_t *atc,
 {
     int *commnode, *buf_index;
     int  nnodes_comm, local_pos, buf_pos, i, scount, rcount, node;
+#ifdef GMX_SHMEM_XXX
+    static int used = 0;
+    static int ready = 0;
+#endif
 
     commnode  = atc->node_dest;
     buf_index = atc->buf_index;
 
     nnodes_comm = min(2*atc->maxshift, atc->nslab-1);
+
+#ifdef GMX_SHMEM_XXX
+    for (i = 0; i < nnodes_comm; i++)
+        {
+            used += atc->rcount[i];
+        }
+    shmem_int_p(&ready, 1, _my_pe());
+    shmem_quiet();
+#endif
 
     local_pos = atc->count[atc->nodeid];
     buf_pos   = 0;
@@ -1483,9 +1467,9 @@ static void dd_pmeredist_f(gmx_pme_t pme, pme_atomcomm_t *atc,
         {
             /* Communicate the forces */
 #ifdef GMX_SHMEM_XXX
-        	 pme_dd_sendrecv_off(atc, TRUE, i,
+        	/* pme_dd_sendrecv_off(atc, TRUE, i,
         	                 atc->f, local_pos*sizeof(rvec), scount*sizeof(rvec),
-        	                 pme->bufv, buf_pos*sizeof(rvec), rcount*sizeof(rvec));
+        	                 pme->bufv, buf_pos*sizeof(rvec), rcount*sizeof(rvec));*/
 #else
             pme_dd_sendrecv(atc, TRUE, i,
                             atc->f[local_pos], scount*sizeof(rvec),
@@ -1496,6 +1480,22 @@ static void dd_pmeredist_f(gmx_pme_t pme, pme_atomcomm_t *atc,
         buf_index[commnode[i]] = buf_pos;
         buf_pos               += rcount;
     }
+
+#ifdef GMX_SHMEM_XXX
+    {
+    	shmem_fence();
+    	while (shmem_int_g(&used, _my_pe()))
+    	{
+    		sched_yield();
+    		SHDEBUG(" Used %d \n", used);
+    	}
+    	SHDEBUG(" Value for used is 0, disable buffers \n")
+    // Invalidate the buffer data
+    shmem_int_p(&ready, 0, _my_pe());
+    shmem_quiet();
+    }
+#endif
+
 
     local_pos = 0;
     if (bAddF)
