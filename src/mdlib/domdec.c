@@ -1889,10 +1889,12 @@ static void dd_realloc_state_shmem(t_state *state, rvec **f, int nalloc)
                     sh_srenew(state->v, state->nalloc);
                     break;
                 case estSDX:
-                    sh_srenew(state->sd_X, state->nalloc);
+                    // sh_srenew(state->sd_X, state->nalloc);
+                    srenew(state->sd_X, state->nalloc);
                     break;
                 case estCGP:
-                    sh_srenew(state->cg_p, state->nalloc);
+                    srenew(state->cg_p, state->nalloc);
+                    // sh_srenew(state->cg_p, state->nalloc);
                     break;
                 case estLD_RNG:
                 case estLD_RNGI:

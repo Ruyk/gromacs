@@ -721,11 +721,13 @@ void done_state_shmem(t_state *state)
     }
     if (state->sd_X)
     {
-        sh_sfree(state->sd_X);
+        // sh_sfree(state->sd_X);
+        sfree(state->sd_X);
     }
     if (state->cg_p)
     {
-        sh_sfree(state->cg_p);
+        // sh_sfree(state->cg_p);
+        sfree(state->cg_p);
     }
     state->nalloc = 0;
     if (state->cg_gl)

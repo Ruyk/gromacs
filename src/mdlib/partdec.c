@@ -1153,8 +1153,8 @@ t_state *partdec_init_local_state(t_commrec *cr, t_state *state_global)
     	int max_atoms = shmem_get_max_alloc(cr->pd->shmem, state_global->natoms);
     	sh_snew(state_local->x, max_atoms);
     	sh_snew(state_local->v, max_atoms);
-    	sh_snew(state_local->sd_X, max_atoms);
-    	sh_snew(state_local->cg_p, max_atoms);
+    	// sh_snew(state_local->sd_X, max_atoms);
+    	// sh_snew(state_local->cg_p, max_atoms);
     	cr->pd->max_atoms = max_atoms;
     	if (state_global->natoms)
     	{
@@ -1177,7 +1177,7 @@ t_state *partdec_init_local_state(t_commrec *cr, t_state *state_global)
     			sfree(state_global->v);
     			state_global->v = state_local->v;
     		}
-    		if (state_global->sd_X)
+    		/*if (state_global->sd_X)
     		{
     			for (i = 0; i < state_global->natoms; i++)
     			{
@@ -1194,7 +1194,7 @@ t_state *partdec_init_local_state(t_commrec *cr, t_state *state_global)
     			}
     			sfree(state_global->cg_p);
     			state_global->cg_p = state_local->cg_p;
-    		}
+    		}*/
     		SHDEBUG(" After initial copy \n");
     	}
     }
