@@ -667,7 +667,7 @@ void dd_move_x(gmx_domdec_t *dd, matrix box, rvec x[])
     cgindex = dd->cgindex;
 
     buf = comm->vbuf.v;
-SHDEBUG("Move X \n");
+
     nzone   = 1;
     nat_tot = dd->nat_home;
     for (d = 0; d < dd->ndim; d++)
@@ -8795,19 +8795,6 @@ static void setup_dd_communication(gmx_domdec_t *dd,
             	call++;
 
             }
-
-/*			if (cd->bInPlace)
-			{
-				dd_sendrecv_rvec_swap_off(dd, dim_ind, dddirBackward,
-						comm->vbuf.v, 0, nsend,
-						cg_cm, pos_cg, ind->nrecv[nzone]);
-			}
-			else
-			{
-				dd_sendrecv_rvec_swap_off(dd, dim_ind, dddirBackward,
-						comm->vbuf.v, 0, nsend,
-						comm->vbuf2.v, 0, ind->nrecv[nzone]);
-			}*/
 #else
 
 			dd_sendrecv_rvec(dd, dim_ind, dddirBackward,

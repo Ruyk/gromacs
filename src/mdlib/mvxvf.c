@@ -56,6 +56,11 @@
 #include "nrnb.h"
 #include "partdec.h"
 
+#ifdef GMX_SHMEM
+// Use the in-place variant of the shmem routines for the partdec part
+#define GMX_SHMEM_INPLACE
+#endif
+
 void move_rvecs(const t_commrec *cr, gmx_bool bForward, gmx_bool bSum,
                 int left, int right, rvec vecs[], rvec buf[],
                 int shift, t_nrnb *nrnb)
@@ -102,7 +107,7 @@ void move_rvecs(const t_commrec *cr, gmx_bool bForward, gmx_bool bSum,
         /* Forward pulse around the ring, to increasing NODE number */
         if (bForward)
         {
-#define GMX_SHMEM_INPLACE
+
 #ifdef GMX_SHMEM_INPLACE
             if (bSum)
             {

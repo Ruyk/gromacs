@@ -291,7 +291,6 @@ void gmx_tx_rx_real(const t_commrec *cr,
 #else
 #define mpi_type MPI_FLOAT
 #endif
-    SHDEBUG(" Bufsize (%d, %d) send: %d, recv: %d \n", send_bufsize, recv_bufsize, send_nodeid, recv_nodeid);
     if (send_bufsize > 0 && recv_bufsize > 0)
     {
         MPI_Sendrecv(send_buf, send_bufsize, mpi_type, RANK(cr, send_nodeid), tx_tag,
@@ -308,7 +307,6 @@ void gmx_tx_rx_real(const t_commrec *cr,
         MPI_Recv(recv_buf, recv_bufsize, mpi_type, RANK(cr, recv_nodeid), rx_tag,
                  cr->mpi_comm_mygroup, &stat);
     }
-    SHDEBUG(" Done \n")
 #undef mpi_type
 #endif
 }
@@ -532,11 +530,10 @@ pd_move_x_constraints(t_commrec *  cr,
         sendptr = x0 + pd->index[thisnode];
         recvptr = x0 + pd->index[thisnode+1];
     }
-    SHDEBUG("Pulse to the left START \n")
+
     gmx_tx_rx_real(cr,
                    GMX_LEFT, (real *)sendptr, sendcnt,
                    GMX_RIGHT, (real *)recvptr, recvcnt);
-    SHDEBUG("Pulse to the left done \n")
 
     /* Final copy back from buffers */
     if (x1 != NULL)
