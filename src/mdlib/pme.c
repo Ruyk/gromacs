@@ -185,6 +185,7 @@ typedef struct {
     gmx_domdec_shmem_buf_t * shmem;
     int     *acum_count;
     int     max_send;
+    int     *recount_call;
 #endif
 
     int     *node_dest;     /* The nodes to send x and q to with DD */
@@ -564,7 +565,7 @@ static void pme_calc_pidx_wrapper(int natoms, matrix recipbox, rvec x[],
     int nthread, thread, slab;
 #ifdef GMX_SHMEM
     {
-    	MPI_Barrier(atc->mpi_comm);
+    	// MPI_Barrier(atc->mpi_comm);
     }
 #endif
     nthread = atc->nthread;
@@ -622,8 +623,8 @@ static void pme_calc_pidx_wrapper(int natoms, matrix recipbox, rvec x[],
     	    		}
     	    	}
     	    }
-
-    	MPI_Barrier(atc->mpi_comm);
+    	*(atc->recount_call) = *(atc->recount_call) + 1;
+    	// MPI_Barrier(atc->mpi_comm);
     }
 #endif
 }
@@ -726,7 +727,6 @@ static void pme_realloc_atomcomm_things(pme_atomcomm_t *atc)
     	{
     		gmx_fatal(FARGS, " Cannot translate PME communicator ID into a COMM_WORLD id \n");
     	}
-    	SHDEBUG(" Rank %d is %d in COMM WORLD \n", nodeid, global);
     	return global;
     }
 #endif
@@ -1263,14 +1263,16 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
 
         atc->n = atc->count[atc->nodeid];
 #ifdef GMX_SHMEM
-
 		for (i = 0; i < nnodes_comm; i++)
 		{
 			/* Get the num of elements to receive by this PE */
 			int src  = pme_get_global_id(atc,atc->node_src[i]);
+			// int rem_count = shmem_int_g(&atc->recount_call, src);
 			int rcount;
-			SHDEBUG(" Waiting for proc %d to be in call %d\n", src, call);
-			// shmem_wait_for_previous_call(atc->shmem, &call, src);
+			SHDEBUG(" Waiting for proc %d to be in call %d\n", src, *(atc->recount_call));
+			// shmem_wait_for_previous_call(atc->shmem, atc->recount_call, src);
+			while ( (shmem_int_g(atc->recount_call, src)) != *(atc->recount_call) ) { sched_yield(); };
+
 			rcount = shmem_int_g(&atc->count[atc->nodeid], src);
 			atc->rcount[i] = rcount;
 			atc->n += rcount;
@@ -1331,6 +1333,8 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
 
         for (i = 0; i < nnodes_comm; i++)
         {
+        	int src  = pme_get_global_id(atc,atc->node_src[i]);
+        	while ( (shmem_int_g(atc->recount_call, src)) != *(atc->recount_call) ) { sched_yield(); };
         	used += atc->count[commnode[i]];
         }
         SHDEBUG(" Total that will be used %d \n", used);
@@ -1390,6 +1394,7 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
     }
 
 #else
+    buf_pos = 0;
     for (i = 0; i < nnodes_comm; i++)
     {
         scount = atc->count[commnode[i]];
@@ -3347,6 +3352,8 @@ static void init_atomcomm(gmx_pme_t pme, pme_atomcomm_t *atc, t_commrec *cr,
         }
         /* TODO: Multithread code */
         sh_snew(atc->acum_count, atc->nslab);
+        sh_snew(atc->recount_call, 1);
+        *(atc->recount_call)=0;
 #else
         for (thread = 0; thread < pme->nthread; thread++)
         {
