@@ -529,8 +529,9 @@ void shmem_sendrecv_nobuf_put( gmx_domdec_shmem_buf_t * shmem,
 	shmem_wait_for_previous_call(shmem, &call, rank_s);
 	if (min(size, size_s))
 	{
-		shmem_putmem( buf_r, buf_s, min(size, size_s), rank_s);
+		shmem_putmem_nb( buf_r, buf_s, min(size, size_s), rank_s, NULL);
 	}
+	shmem_fence();
 
 	shmem_int_p(&done, 1, rank_s);
 	shmem_fence();
@@ -538,16 +539,29 @@ void shmem_sendrecv_nobuf_put( gmx_domdec_shmem_buf_t * shmem,
 
 	shmem_int_wait(&done, -1);
 
-	shmem_int_p(&size, -1, rank_r);
+	/* shmem_int_p(&size, -1, rank_r);
 	shmem_fence();
 	shmem_quiet();
 
-	shmem_int_wait_until(&size, SHMEM_CMP_EQ, -1);
+	shmem_int_wait_until(&size, SHMEM_CMP_EQ, -1);*/
 
+	/* shmem_int_p(&done, -1, rank_s);
+	shmem_fence();
+	shmem_quiet();
+	shmem_int_wait_until(&done, SHMEM_CMP_EQ, -1); */
+
+	/* shmem_int_p(&size, -1, rank_r);
 	shmem_int_p(&done, -1, rank_s);
+
 	shmem_fence();
 	shmem_quiet();
-	shmem_int_wait_until(&done, SHMEM_CMP_EQ, -1);
+
+	while ( ((volatile int) done != -1 ) && ((volatile int) size != -1) )
+	{
+		sched_yield();
+	} */
+	size = -1;
+	done = -1;
 
 	call++;
 }
@@ -674,7 +688,7 @@ void shmem_mem_sendrecv_swap_off_base(gmx_domdec_shmem_buf_t* shmem, void* send_
 		/**** Recv ****/
 		if (recv_bufsize > 0)
 		{
-			SHDEBUG(" Waiting for previous call %d \n", call);
+			SHDEBUG(" Waiting for previous call %d \n", *call);
 			shmem_wait_for_previous_call(shmem, call, recv_nodeid);
 			/* Receiver: Put offset on sender */
 			shmem_int_p(&rem_off, off_r, recv_nodeid);
@@ -691,7 +705,7 @@ void shmem_mem_sendrecv_swap_off_base(gmx_domdec_shmem_buf_t* shmem, void* send_
 		/*** Send ****/
 		if (send_bufsize > 0)
 		{
-			SHDEBUG(" Waiting for previous call %d \n", call);
+			SHDEBUG(" Waiting for previous call %d \n", *call);
 			shmem_wait_for_previous_call(shmem, call, send_nodeid);
 			SHDEBUG(" Waiting for rem_size \n");
 			shmem_int_wait(&rem_size, -1);
