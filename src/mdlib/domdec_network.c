@@ -114,6 +114,23 @@ void dd_sendrecv_real_off(const gmx_domdec_t *dd,
     shmem_float_sendrecv_off(shmem, buf_s, off_s, n_s, rank_s, buf_r, off_r, n_r, rank_r);
 }
 
+void dd_put_with_off(const gmx_domdec_t *dd,
+                      int ddimind, int direction,
+                      real *buf_s, int off_s, int n_s,
+                      real *buf_r)
+{
+    int        rank_s, rank_r;
+    static int off_l = -1;
+    static int call = 1;
+    gmx_domdec_shmem_buf_t * shmem = dd->shmem;
+
+    rank_s = dd->neighbor[ddimind][direction == dddirForward ? 0 : 1];
+    rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
+
+    // shmem_float_sendrecv_off(shmem, buf_s, off_s, n_s, rank_s, buf_r, off_r, n_r, rank_r);
+    shmem_put_with_off(shmem, buf_s, off_s, n_s, rank_s, buf_r, rank_r);
+}
+
 void dd_sendrecv_int_nobuf(const gmx_domdec_t *dd,
 		int ddimind, int direction,
 		int *buf_s, int n_s,
@@ -244,37 +261,43 @@ void dd_sendrecv2_rvec_off(const gmx_domdec_t *dd,
 	 rank_s_bw = rank_r_fw; // dd->neighbor[ddimind][1];
 	 rank_r_bw = rank_s_fw; // dd->neighbor[ddimind][0];
 
+	 shmem_int_inc(&call, _my_pe());
 	 shmem_wait_for_previous_call(shmem, &call, rank_r_fw);
 	 shmem_wait_for_previous_call(shmem, &call, rank_s_fw);
 
 	{
 			static int rem_off_fw = -1;
-			static int rem_size_fw = -1;
+			static int rem_size_fw = INT_MAX;
 			static int rem_off_bw = -1;
-			static int rem_size_bw = -1;
-			static int done = -1;
+			static int rem_size_bw = INT_MAX;
+			static int done = -2;
+#if 1
+			shmem_int_p(&done, -1, rank_s_fw);
+			shmem_fence();
+			shmem_quiet();
+			shmem_int_wait_until(&done, SHMEM_CMP_EQ, -1);
+#endif
 
 			/* Receiver: Put offset on sender */
 			shmem_int_p(&rem_off_fw, off_r_fw, rank_r_fw);
 			shmem_fence();
+			shmem_quiet();
 			shmem_int_wait(&rem_off_fw, -1);
+			/* Receiver: Put size on sender */
+			/*shmem_int_p(&rem_size_fw, n_r_fw, rank_r_fw);
+			shmem_fence();
+			shmem_quiet();*/
+			/* Sender: Wait for receiver to put data on me */
+			// shmem_int_wait(&rem_size_fw, -1);
 
 			shmem_int_p(&rem_off_bw, off_r_bw, rank_r_bw);
 			shmem_fence();
+			shmem_quiet();
 			shmem_int_wait(&rem_off_bw, -1);
-
-			/* Receiver: Put size on sender */
-			shmem_int_p(&rem_size_fw, n_r_fw, rank_r_fw);
+			/* shmem_int_p(&rem_size_bw, n_r_bw, rank_r_bw);
 			shmem_fence();
-			/* Sender: Wait for receiver to put data on me */
-			shmem_int_wait(&rem_size_fw, -1);
-
-			shmem_int_p(&rem_size_bw, n_r_bw, rank_r_bw);
-			shmem_fence();
-			shmem_int_wait(&rem_size_bw, -1);
-
-
-
+			shmem_quiet();
+			shmem_int_wait(&rem_size_bw, -1);*/
 
 			/* Sender: Put min(rsize, send_bufsize) elements of send_buf on recv_buf + offset */
 			if (min(rem_size_fw, n_s_fw)) {
@@ -310,28 +333,34 @@ void dd_sendrecv2_rvec_off(const gmx_domdec_t *dd,
 			/* Receiver: Put offset on sender */
 			shmem_int_p(&rem_off_fw, -1, rank_r_fw);
 			shmem_fence();
+			shmem_quiet();
 			shmem_int_wait_until(&rem_off_fw, SHMEM_CMP_EQ, -1);
 			shmem_int_p(&rem_off_bw, -1, rank_r_bw);
 			shmem_fence();
+			shmem_quiet();
 			shmem_int_wait_until(&rem_off_bw, SHMEM_CMP_EQ, -1);
 
 			/* Receiver: Put size on sender */
-			shmem_int_p(&rem_size_fw, -1, rank_r_fw);
+			/*shmem_int_p(&rem_size_fw, -1, rank_r_fw);
 			shmem_fence();
-			shmem_int_wait_until(&rem_size_fw, SHMEM_CMP_EQ, -1);
-			shmem_int_p(&rem_size_bw, -1, rank_r_bw);
-			shmem_fence();
-			shmem_int_wait_until(&rem_size_bw, SHMEM_CMP_EQ, -1);
-
-			shmem_int_p(&done, -1, rank_s_fw);
+			shmem_quiet();*/
+			// shmem_int_wait_until(&rem_size_fw, SHMEM_CMP_EQ, -1);
+			/* shmem_int_p(&rem_size_bw, -1, rank_r_bw);
 			shmem_fence();
 			shmem_quiet();
-			shmem_int_wait_until(&done, SHMEM_CMP_EQ, -1);
+			shmem_int_wait_until(&rem_size_bw, SHMEM_CMP_EQ, -1); */
+
+			/*shmem_int_p(&done, -1, rank_s_fw);
+			shmem_fence();
+			shmem_quiet();
+			shmem_int_wait_until(&done, SHMEM_CMP_EQ, -1);*/
+
+
 
 		}
 
 
-	call++;
+
 }
 #else
 void dd_sendrecv2_rvec_off(const gmx_domdec_t *dd,

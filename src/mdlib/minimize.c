@@ -380,7 +380,6 @@ void init_em(FILE *fplog, const char *title,
         copy_mat(state_global->box, ems->s.box);
 
 #ifdef GMX_SHMEM
-        // Use SHMEM for state_global
         state_global->x = ems->s.x;
 #endif
 
@@ -588,7 +587,8 @@ static void do_em_step(t_commrec *cr, t_inputrec *ir, t_mdatoms *md,
            sh_srenew(ems2->f,  s1->nalloc);
            if (s2->flags & (1<<estCGP))
            {
-               sh_srenew(s2->cg_p,  s1->nalloc);
+               // sh_srenew(s2->cg_p,  s1->nalloc);
+               srenew(s2->cg_p,  s1->nalloc);
            }
        }
 

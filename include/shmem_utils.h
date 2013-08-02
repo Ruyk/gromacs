@@ -208,10 +208,9 @@ void shmem_sendrecv_nobuf_put( gmx_domdec_shmem_buf_t * shmem,
 void shmem_int_put_sync(gmx_domdec_shmem_buf_t * shmem, int * buf_r, int * buf_s, int n_s, int rank_s);
 
 void shmem_wait_for_previous_call(gmx_domdec_shmem_buf_t * shmem, int * call, int rank);
-void shmem_sync_pair(gmx_domdec_shmem_buf_t* shmem, int rank_s, int rank_r) ;
 
-void shmem_put_offset(int * off_l, int off_s, int rank);
-void shmem_clear_offset(int * off_l, int rank);
+void shmem_put_with_off(gmx_domdec_shmem_buf_t* shmem, real* send_buf, int off_s,
+		int send_bufsize, int send_nodeid, real* recv_buf, int recv_nodeid);
 
 void shmem_int_sendrecv_off(gmx_domdec_shmem_buf_t* shmem, int* send_buf, int off_s,
 		int send_bufsize, int send_nodeid, int* recv_buf, int off_r,

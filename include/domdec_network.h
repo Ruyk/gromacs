@@ -135,6 +135,10 @@ void dd_sendrecv_real_nobuf(const gmx_domdec_t *dd,
 		real *buf_s, int n_s,
 		real *buf_r, int n_r);
 
+void dd_put_with_off(const gmx_domdec_t *dd,
+                      int ddimind, int direction,
+                      real *buf_s, int off_s, int n_s,
+                      real *buf_r);
 
 #endif
 

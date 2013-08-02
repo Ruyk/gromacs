@@ -518,6 +518,7 @@ void shmem_sendrecv_nobuf_put( gmx_domdec_shmem_buf_t * shmem,
 	static int size = -1;
 	static int done = -1;
 
+	shmem_int_inc(&call, _my_pe());
 	shmem_wait_for_previous_call(shmem, &call, rank_r);
 
 	shmem_int_p(&size, size_r, rank_r);
@@ -555,15 +556,10 @@ void shmem_sendrecv_nobuf_put( gmx_domdec_shmem_buf_t * shmem,
 
 	shmem_fence();
 	shmem_quiet();
-
-	while ( ((volatile int) done != -1 ) && ((volatile int) size != -1) )
-	{
-		sched_yield();
 	} */
 	size = -1;
 	done = -1;
 
-	call++;
 }
 
 void shmem_float_sendrecv_off(gmx_domdec_shmem_buf_t* shmem, real* send_buf, int off_s,
@@ -629,6 +625,52 @@ void shmem_float_sendrecv_off(gmx_domdec_shmem_buf_t* shmem, real* send_buf, int
 		shmem_int_wait_until(&done, SHMEM_CMP_EQ, -1);
 
 		call++;
+	}
+}
+
+void shmem_put_with_off(gmx_domdec_shmem_buf_t* shmem, real* send_buf, int off_s,
+		int send_bufsize, int send_nodeid, real* recv_buf, int recv_nodeid)
+{
+	{
+		static int call = 0;
+		static int rem_off = -1;
+		static int rem_size = -1;
+		static int done = -2;
+
+		shmem_int_inc(&call, _my_pe());
+		shmem_wait_for_previous_call(shmem, &call, recv_nodeid);
+
+		shmem_wait_for_previous_call(shmem, &call, send_nodeid);
+
+		// Reset the flag
+		shmem_int_p(&done, -1, send_nodeid);
+		shmem_fence();
+		shmem_quiet();
+		shmem_int_wait_until(&done, SHMEM_CMP_EQ, -1);
+
+		/* Sender: Put send_bufsize elemens of send_buf+off on recv_buf */
+		if (send_bufsize) {
+			SHDEBUG(
+					" Putting data on recv_nodeid, rem off %d send off %d, recv ptr %p send ptr %p \n",
+					rem_off, off_s, recv_buf, send_buf);
+			shmem_float_put(((real *) recv_buf ),
+					((real *) send_buf + off_s), send_bufsize,
+					send_nodeid);
+		}
+		SHDEBUG(" Putting ACK in %d \n", send_nodeid);
+		/* Tell receiver data is ready */
+		shmem_int_p(&done, 1, send_nodeid);
+		shmem_fence();
+		shmem_quiet();
+		SHDEBUG(" Waiting for done from send_nodeid %d \n", recv_nodeid);
+		/* Wait for data to be written */
+		shmem_int_wait(&done, -1);
+		SHDEBUG(" After done \n");
+
+		SHDEBUG(
+				" Data in receiver (should be -1) (rem_size %d, send_size %d) \n",
+				rem_size, rem_off);
+
 	}
 }
 

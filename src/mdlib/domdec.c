@@ -1024,9 +1024,12 @@ void dd_atom_spread_real(gmx_domdec_t *dd, real v[])
             }
             /* Send and receive the coordinates */
 #ifdef GMX_SHMEM // _INPLACE
-            dd_sendrecv_real_off(dd, d, dddirBackward,
+            /* dd_sendrecv_real_off(dd, d, dddirBackward,
                                  buf,  0, ind->nsend[nzone+1],
-                                 rbuf, 0, ind->nrecv[nzone+1]);
+                                 rbuf, 0, ind->nrecv[nzone+1]);*/
+            dd_put_with_off(dd, d, dddirBackward,
+                                 buf,  0, ind->nsend[nzone+1],
+                                 rbuf);
 #else
             dd_sendrecv_real(dd, d, dddirBackward,
                              buf,  ind->nsend[nzone+1],
@@ -1097,15 +1100,22 @@ void dd_atom_sum_real(gmx_domdec_t *dd, real v[])
 #ifdef GMX_SHMEM
             if (cd->bInPlace)
             {
-              dd_sendrecv_real_off(dd, d, dddirForward,
+              /* dd_sendrecv_real_off(dd, d, dddirForward,
                              v, nat_tot, ind->nrecv[nzone+1],
-                             buf, 0, ind->nsend[nzone+1]);
+                             buf, 0, ind->nsend[nzone+1]); */
+              dd_put_with_off(dd, d, dddirForward,
+                              v, nat_tot, ind->nrecv[nzone+1],
+                              buf);
             }
             else
             {
-            	dd_sendrecv_real_off(dd, d, dddirForward,
+            	/* dd_sendrecv_real_off(dd, d, dddirForward,
             			       &comm->vbuf2.v[0][0], 0, ind->nrecv[nzone+1],
-            	               buf, 0, ind->nsend[nzone+1]);
+            	               buf, 0, ind->nsend[nzone+1]);*/
+            	 dd_put_with_off(dd, d, dddirForward,
+      			       &comm->vbuf2.v[0][0], 0, ind->nrecv[nzone+1],
+      	               buf);
+
             }
 #elif defined(GMX_SHMEM_GETMEM)
             /* This sendrecv is dangerous. Since each PE may have different bInPlace values,
@@ -8322,6 +8332,8 @@ static void setup_dd_communication(gmx_domdec_t *dd,
     int                    th;
 #ifdef GMX_SHMEM
     vec_rvec_t tmp_vbuf;
+    tmp_vbuf.v = NULL;
+    tmp_vbuf.nalloc = 0;
 #endif
 
     if (debug)
@@ -8451,14 +8463,16 @@ static void setup_dd_communication(gmx_domdec_t *dd,
             nsend = 0;
             nat   = 0;
 #ifdef GMX_SHMEM
-                /* comm->vbuff is reallocated within the parallel region.
+                /* comm->vbuf is reallocated within the parallel region.
                  * To avoid doing SHMEM calls within the parallel region,
                  * we copy vbuf to a temporary non-symmetric vector, and
                  * then recover the values after the parallel region
-                */
+                 */
                 SHDEBUG(" Copying data to tmp_vbuf \n");
-                snew(tmp_vbuf.v, comm->vbuf.nalloc);
+                // vec_rvec_check_alloc(&tmp_vbuf, comm->vbuf.nalloc);
                 tmp_vbuf.nalloc = comm->vbuf.nalloc;
+                srenew(tmp_vbuf.v, tmp_vbuf.nalloc);
+                // tmp_vbuf.nalloc = comm->vbuf.nalloc;
                 SHDEBUG(" tmp nalloc %d , vbuf nalloc %d \n", tmp_vbuf.nalloc, comm->vbuf.nalloc);
                 copy_rvecn(comm->vbuf.v, tmp_vbuf.v, 0, tmp_vbuf.nalloc);
                 SHDEBUG(" After copying data \n");
@@ -8499,7 +8513,7 @@ static void setup_dd_communication(gmx_domdec_t *dd,
                 if (p == 0)
                 {
                     /* Here we permutate the zones to obtain a convenient order
-                     * for neighbor searching
+                     * for neighbour searching
                      */
                     cg0 = zone_cg_range[zonei];
                     cg1 = zone_cg_range[zonei+1];
@@ -8593,7 +8607,7 @@ static void setup_dd_communication(gmx_domdec_t *dd,
                     dth = &comm->dth[th];
 
                     ns1 = nsend + dth->nsend_zone;
-#ifdef GMX_SHMEM_XXX
+#ifdef GMX_SHMEM_INT
                     shrenew(dd->shmem, ind->index, &ind->nalloc, ns1);
 #else
                     if (ns1 > ind->nalloc)
@@ -8602,7 +8616,7 @@ static void setup_dd_communication(gmx_domdec_t *dd,
                         srenew(ind->index, ind->nalloc);
                     }
 #endif
-#ifdef GMX_SHMEM_XXX
+#ifdef GMX_SHMEM_INT
                     shrenew(dd->shmem, comm->buf_int, &comm->nalloc_int, ns1);
 #else
                     if (ns1 > comm->nalloc_int)
@@ -8614,16 +8628,21 @@ static void setup_dd_communication(gmx_domdec_t *dd,
 
                     /* TODO: This should use the vec_rvec_check_alloc routine
                      */
-                    if (ns1 > comm->vbuf.nalloc)
-                    {
+
 #ifdef GMX_SHMEM
+                    if (ns1 > tmp_vbuf.nalloc)
+                    {
                     	tmp_vbuf.nalloc = over_alloc_dd(ns1);
-                        srenew(tmp_vbuf.v, comm->vbuf.nalloc);
+                    	srenew(tmp_vbuf.v, tmp_vbuf.nalloc);
+                	}
 #else
-                        comm->vbuf.nalloc = over_alloc_dd(ns1);
-                        srenew(comm->vbuf.v, comm->vbuf.nalloc);
+                	if (ns1 > comm->vbuf.nalloc)
+                	{
+                		comm->vbuf.nalloc = over_alloc_dd(ns1);
+                		srenew(comm->vbuf.v, comm->vbuf.nalloc);
+                	}
 #endif
-                    }
+
 
 
                     for (i = 0; i < dth->nsend_zone; i++)
@@ -8650,8 +8669,8 @@ static void setup_dd_communication(gmx_domdec_t *dd,
                 vec_rvec_check_alloc_shmem(dd, &comm->vbuf, tmp_vbuf.nalloc);
                 SHDEBUG(" tmp nalloc %d , vbuf nalloc %d \n", tmp_vbuf.nalloc, comm->vbuf.nalloc);
                 copy_rvecn(tmp_vbuf.v, comm->vbuf.v, 0, tmp_vbuf.nalloc);
-                sfree(tmp_vbuf.v);
-                tmp_vbuf.nalloc = 0;
+                /* sfree(tmp_vbuf.v);
+                tmp_vbuf.nalloc = 0; */
                 SHDEBUG(" Recovering OK \n");
 #endif
 
@@ -8696,7 +8715,7 @@ static void setup_dd_communication(gmx_domdec_t *dd,
 #endif
                 {
                     /* The int buffer is only required here for the cg indices */
-#ifdef GMX_SHMEM_XXX
+#ifdef GMX_SHMEM_INT
                 	shrenew(comm->buf_int2, &comm->nalloc_int2, ind->nrecv[nzone]);
 #else
                     if (ind->nrecv[nzone] > comm->nalloc_int2)
@@ -8718,7 +8737,7 @@ static void setup_dd_communication(gmx_domdec_t *dd,
             }
 
             /* Make space for the global cg indices */
-#ifdef GMX_SHMEM_XXX
+#ifdef GMX_SHMEM_INT
             if (dd->cg_nalloc == 0)
             {
             	shrenew(dd->shmem, index_gl, &dd->cg_nalloc, pos_cg + ind->nrecv[nzone]);
