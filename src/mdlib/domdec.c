@@ -5044,15 +5044,11 @@ static void dd_redistribute_cg(FILE *fplog, gmx_large_int_t step,
     for (mc = 0; mc < dd->ndim*2; mc++)
     {
         nvr = ncg[mc] + nat[mc]*nvec;
-#ifdef GMX_SHMEM
-        shrenew(dd->shmem, comm->cgcm_state[mc], &(comm->cgcm_state_nalloc[mc]), nvr);
-#else
         if (nvr > comm->cgcm_state_nalloc[mc])
         {
             comm->cgcm_state_nalloc[mc] = over_alloc_dd(nvr);
             srenew(comm->cgcm_state[mc], comm->cgcm_state_nalloc[mc]);
         }
-#endif
     }
 
     switch (fr->cutoff_scheme)
@@ -5188,7 +5184,7 @@ static void dd_redistribute_cg(FILE *fplog, gmx_large_int_t step,
         } /* for dir */
 
         /***** NOTE THAT: Each process will receive different charge groups, thus each buff. is different */
-#ifdef GMX_SHMEM_NOT_MAX_HOMEAT
+#ifdef GMX_SHMEM
         SHDEBUG(" Reallocation of charge groups, ncg_recv %d \n", ncg_recv);
         {
         	int tmp = 0;
@@ -5391,15 +5387,13 @@ static void dd_redistribute_cg(FILE *fplog, gmx_large_int_t step,
                     srenew(comm->cggl_flag[mc], comm->cggl_flag_nalloc[mc]*DD_CGIBS);
                 }
                 nvr = ncg[mc] + nat[mc]*nvec;
-#ifdef GMX_SHMEM
-                /* Since buffers are symmetric across all PEs, this is relloc is not required */
-#else
+
                 if (nvr + 1 + nrcg*nvec > comm->cgcm_state_nalloc[mc])
                 {
                     comm->cgcm_state_nalloc[mc] = over_alloc_dd(nvr + 1 + nrcg*nvec);
                     srenew(comm->cgcm_state[mc], comm->cgcm_state_nalloc[mc]);
                 }
-#endif
+
                 /* Copy from the receive to the send buffers */
                 memcpy(comm->cggl_flag[mc] + ncg[mc]*DD_CGIBS,
                        comm->buf_int + cg*DD_CGIBS,
