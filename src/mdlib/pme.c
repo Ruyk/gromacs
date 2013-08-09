@@ -605,7 +605,7 @@ static void pme_calc_pidx_wrapper(int natoms, matrix recipbox, rvec x[],
     		old_max_val = shmem_get_max_alloc(atc->shmem, tmp);
     	}
 #endif
-    	atc->max_send = 10000;
+    	atc->max_send = 5000;
     	 {
     			int i, scount;
     	    	for (i = 0; i < atc->nslab; i++)
@@ -1263,6 +1263,8 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
 
         atc->n = atc->count[atc->nodeid];
 #ifdef GMX_SHMEM
+#define SAFE_RCOUNT
+#ifdef SAFE_RCOUNT
 		for (i = 0; i < nnodes_comm; i++)
 		{
 			/* Get the num of elements to receive by this PE */
@@ -1277,6 +1279,47 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
 			atc->rcount[i] = rcount;
 			atc->n += rcount;
 		}
+#else
+		/* This implementation reduces imbalance by avoiding waiting sequentially
+		 * for each other process to finish - instead it peeks the status of each one and
+		 * if not available, it continues to check the next one.
+		 * However, this seems to be problematic for the CRAY MPT implementation and
+		 * causes random crashes when used  in large executions.
+		 * The crashes seems to be related with pme_get_global_id and internal to the MPI lib.
+		 */
+		int remaining[nnodes_comm];
+		int rem_count = nnodes_comm;
+		int i = 0;
+		for (i = 0; i < nnodes_comm; i++)
+		{
+			remaining[i] = 1;
+		}
+
+		do
+		{
+			for (i = 0; i < nnodes_comm; i++ )
+			{
+				if (remaining[i] == 1)
+				{
+					/* Get the num of elements to receive by this PE */
+					int src  = pme_get_global_id(atc,atc->node_src[i]);
+					int rcount;
+					SHDEBUG(" Waiting for proc %d to be in call %d\n", src, *(atc->recount_call));
+					// while ( (shmem_int_g(atc->recount_call, src)) != *(atc->recount_call) ) { sched_yield(); };
+					if ( (shmem_int_g(atc->recount_call, src)) == *(atc->recount_call) )
+					{
+
+						remaining[i] = 0;
+						rem_count--;
+						rcount = shmem_int_g(&atc->count[atc->nodeid], src);
+						atc->rcount[i] = rcount;
+						atc->n += rcount;
+						SHDEBUG(" Updating i %d rem_count %d rcount %d \n", i, rem_count, rcount);
+					}
+				}
+			}
+		} while (rem_count > 0);
+#endif
 
 #else
 
