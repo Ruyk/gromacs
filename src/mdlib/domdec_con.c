@@ -198,6 +198,7 @@ static void dd_move_f_specat(gmx_domdec_t *dd, gmx_domdec_specat_comm_t *spac,
 #ifdef GMX_SHMEM
             dd_sendrecv_rvec_off(dd, d, dddirForward,
             				     f,n, spas->nrecv, spac->vbuf, 0, spas->nsend);
+            // dd_put_with_off(dd, d, dddirForward,  *f, n*DIM, spas->nrecv*DIM, *spac->vbuf);
 #else
             dd_sendrecv_rvec(dd, d, dddirForward,
                              f+n, spas->nrecv, spac->vbuf, spas->nsend);
@@ -425,8 +426,11 @@ static void dd_move_x_specat(gmx_domdec_t *dd, gmx_domdec_specat_comm_t *spac,
                 /* Communicate both vectors in one buffer */
                 rbuf = spac->vbuf2;
 #ifdef GMX_SHMEM
-                dd_sendrecv_rvec_off(dd, d, dddirBackward,
-                                 spac->vbuf, 0, 2*spas->nsend, rbuf, 0, 2*spas->nrecv);
+                dd_sendrecv_rvec(dd, d, dddirBackward,
+                                 spac->vbuf, 2*spas->nsend, rbuf, 2*spas->nrecv);
+                // shmem_barrier_all();
+              // dd_put_with_off(dd, d, dddirBackward,  *(spac->vbuf), 0, 2*spas->nsend*DIM, *(rbuf));
+                // shmem_barrier_all();
 #else
                 dd_sendrecv_rvec(dd, d, dddirBackward,
                                  spac->vbuf, 2*spas->nsend, rbuf, 2*spas->nrecv);

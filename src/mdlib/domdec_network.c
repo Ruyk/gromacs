@@ -126,9 +126,10 @@ void dd_put_with_off(const gmx_domdec_t *dd,
 
     rank_s = dd->neighbor[ddimind][direction == dddirForward ? 0 : 1];
     rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
-
+    SHDEBUG(" Before put with off \n");
     // shmem_float_sendrecv_off(shmem, buf_s, off_s, n_s, rank_s, buf_r, off_r, n_r, rank_r);
     shmem_put_with_off(shmem, buf_s, off_s, n_s, rank_s, buf_r, rank_r);
+    SHDEBUG(" After put with off \n");
 }
 
 void dd_sendrecv_int_nobuf(const gmx_domdec_t *dd,
@@ -253,7 +254,7 @@ void dd_sendrecv2_rvec_off(const gmx_domdec_t *dd,
 	            	         buf_s_fw, off_s_fw, n_s_fw, buf_r_fw , off_r_fw, n_r_fw);
 	dd_sendrecv_rvec_swap_off(dd, ddimind, dddirBackward,
 		            	         buf_s_bw, off_s_bw, n_s_bw, buf_r_fw , off_r_bw, n_r_bw);
-#endif
+#else
 
 	 rank_s_fw = dd->neighbor[ddimind][0];
 	 rank_r_fw = dd->neighbor[ddimind][1];
@@ -262,6 +263,7 @@ void dd_sendrecv2_rvec_off(const gmx_domdec_t *dd,
 	 rank_r_bw = rank_s_fw; // dd->neighbor[ddimind][0];
 
 	 shmem_int_inc(&call, _my_pe());
+
 	 shmem_wait_for_previous_call(shmem, &call, rank_r_fw);
 	 shmem_wait_for_previous_call(shmem, &call, rank_s_fw);
 
@@ -271,12 +273,12 @@ void dd_sendrecv2_rvec_off(const gmx_domdec_t *dd,
 			static int rem_off_bw = -1;
 			static int rem_size_bw = INT_MAX;
 			static int done = -2;
-#if 1
+
+
 			shmem_int_p(&done, -1, rank_s_fw);
 			shmem_fence();
 			shmem_quiet();
 			shmem_int_wait_until(&done, SHMEM_CMP_EQ, -1);
-#endif
 
 			/* Receiver: Put offset on sender */
 			shmem_int_p(&rem_off_fw, off_r_fw, rank_r_fw);
@@ -358,7 +360,7 @@ void dd_sendrecv2_rvec_off(const gmx_domdec_t *dd,
 
 
 		}
-
+#endif
 
 
 }
@@ -492,6 +494,14 @@ void dd_sendrecv_rvec(const gmx_domdec_t *dd,
                       rvec *buf_s, int n_s,
                       rvec *buf_r, int n_r)
 {
+#ifdef GMX_SHMEM
+    int        rank_s, rank_r;
+    rank_s = dd->neighbor[ddimind][direction == dddirForward ? 0 : 1];
+    rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
+
+	shmem_sendrecv_nobuf_put(dd->shmem, buf_s, n_s*sizeof(rvec), rank_s,
+			                            buf_r, n_r*sizeof(rvec), rank_r);
+#else
     int        rank_s, rank_r;
     MPI_Status stat;
 
@@ -514,6 +524,7 @@ void dd_sendrecv_rvec(const gmx_domdec_t *dd,
         MPI_Recv(    buf_r[0], n_r*sizeof(rvec), MPI_BYTE, rank_r, 0,
                      dd->mpi_comm_all, &stat);
     }
+#endif
 }
 
 void dd_sendrecv2_rvec(const gmx_domdec_t *dd,
