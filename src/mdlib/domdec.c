@@ -873,7 +873,7 @@ void dd_move_f(gmx_domdec_t *dd, rvec f[], rvec *fshift)
             }
             /* Communicate the forces */
 #ifdef GMX_SHMEM
-            if (cd->bInPlace)
+           if (cd->bInPlace)
             {
              dd_sendrecv_rvec_off(dd, d, dddirForward,
                  f, nat_tot, ind->nrecv[nzone+1],
@@ -885,6 +885,8 @@ void dd_move_f(gmx_domdec_t *dd, rvec f[], rvec *fshift)
             			   comm->vbuf2.v, 0, ind->nrecv[nzone+1],
             			   buf, 0, ind->nsend[nzone+1]);
             }
+
+
 #elif defined(GMX_SHMEM_GETMEM)
             /* This sendrecv is dangerous. Since each PE may have different bInPlace values,
              * and the sendrecv_rvec_off is implemented using get, it is possible than the destination
@@ -1026,7 +1028,7 @@ void dd_atom_spread_real(gmx_domdec_t *dd, real v[])
 #ifdef GMX_SHMEM // _INPLACE
             /* dd_sendrecv_real_off(dd, d, dddirBackward,
                                  buf,  0, ind->nsend[nzone+1],
-                                 rbuf, 0, ind->nrecv[nzone+1]);*/
+                                 rbuf, 0, ind->nrecv[nzone+1]); */
             dd_put_with_off(dd, d, dddirBackward,
                                  buf,  0, ind->nsend[nzone+1],
                                  rbuf);
@@ -1100,10 +1102,10 @@ void dd_atom_sum_real(gmx_domdec_t *dd, real v[])
 #ifdef GMX_SHMEM
             if (cd->bInPlace)
             {
-              /* dd_sendrecv_real_off(dd, d, dddirForward,
+               /* dd_sendrecv_real_off(dd, d, dddirForward,
                              v, nat_tot, ind->nrecv[nzone+1],
                              buf, 0, ind->nsend[nzone+1]); */
-              dd_put_with_off(dd, d, dddirForward,
+               dd_put_with_off(dd, d, dddirForward,
                               v, nat_tot, ind->nrecv[nzone+1],
                               buf);
             }
@@ -1111,7 +1113,7 @@ void dd_atom_sum_real(gmx_domdec_t *dd, real v[])
             {
             	/* dd_sendrecv_real_off(dd, d, dddirForward,
             			       &comm->vbuf2.v[0][0], 0, ind->nrecv[nzone+1],
-            	               buf, 0, ind->nsend[nzone+1]);*/
+            	               buf, 0, ind->nsend[nzone+1]); */
             	 dd_put_with_off(dd, d, dddirForward,
       			       &comm->vbuf2.v[0][0], 0, ind->nrecv[nzone+1],
       	               buf);
@@ -1322,9 +1324,10 @@ static void dd_move_cellx(gmx_domdec_t *dd, gmx_ddbox_t *ddbox,
             /* Communicate the extremes forward */
             bUse = (bPBC || dd->ci[dim] > 0);
 #ifdef GMX_SHMEM
-            dd_sendrecv_rvec_off(dd, d, dddirForward,
-                             extr_s, d, dd->ndim-d-1,
-                             extr_r, d, dd->ndim-d-1);
+            // d is the same in all PEs
+            dd_sendrecv_rvec(dd, d, dddirForward,
+                             extr_s+d, dd->ndim-d-1,
+                             extr_r+d, dd->ndim-d-1);
 #else
             dd_sendrecv_rvec(dd, d, dddirForward,
                              extr_s+d, dd->ndim-d-1,
@@ -5131,6 +5134,7 @@ static void dd_redistribute_cg(FILE *fplog, gmx_large_int_t step,
     cginfo_mb = fr->cginfo_mb;
 
     *ncg_stay_home = home_pos_cg;
+
     for (d = 0; d < dd->ndim; d++)
     {
         dim      = dd->dim[d];
@@ -5188,16 +5192,19 @@ static void dd_redistribute_cg(FILE *fplog, gmx_large_int_t step,
         SHDEBUG(" Reallocation of charge groups, ncg_recv %d \n", ncg_recv);
         {
         	int tmp = 0;
+        	int max_state = 0;
+        	int max_f = 0;
         	/* Get the total value of nrcg for this proc */
         	for (cg = 0; cg < ncg_recv; cg++)
         	{
         		tmp += (comm->buf_int[cg*DD_CGIBS+1] & DD_FLAG_NRCG);
         	}
+        	max_state = shmem_get_max_alloc(dd->shmem, home_pos_at+tmp);
+        	max_f     = shmem_get_max_alloc(dd->shmem, home_pos_cg+ncg_recv);
         	SHDEBUG(" Will realloc state with home_post_at+tmp %d (h_p_a %d, tmp %d) \n", home_pos_at, home_pos_at, tmp);
-        	dd_realloc_state_shmem(state, f,  shmem_get_max_alloc(dd->shmem,home_pos_at+tmp));
+        	dd_realloc_state_shmem(state, f,  max_state);
         	SHDEBUG(" Successfully reallocated state with home_pos_at+tmp %d (h_p_a %d, tmp %d) \n", home_pos_at+tmp, home_pos_at, tmp);
-        	/* Copy the state from the buffer */
-        	dd_check_alloc_ncg(fr, state, f, shmem_get_max_alloc(dd->shmem, home_pos_cg+ncg_recv));
+        	dd_check_alloc_ncg(fr, state, f, max_f);
         	SHDEBUG(" After dd_check_alloc_ncg , home_pos %d tmp %d \n", home_pos_at, tmp);
         }
 #endif
@@ -8468,7 +8475,7 @@ static void setup_dd_communication(gmx_domdec_t *dd,
                 srenew(tmp_vbuf.v, tmp_vbuf.nalloc);
                 // tmp_vbuf.nalloc = comm->vbuf.nalloc;
                 SHDEBUG(" tmp nalloc %d , vbuf nalloc %d \n", tmp_vbuf.nalloc, comm->vbuf.nalloc);
-                copy_rvecn(comm->vbuf.v, tmp_vbuf.v, 0, tmp_vbuf.nalloc);
+                // copy_rvecn(comm->vbuf.v, tmp_vbuf.v, 0, tmp_vbuf.nalloc);
                 SHDEBUG(" After copying data \n");
 #endif
             for (zone = 0; zone < nzone_send; zone++)
@@ -8663,8 +8670,9 @@ static void setup_dd_communication(gmx_domdec_t *dd,
                 vec_rvec_check_alloc_shmem(dd, &comm->vbuf, tmp_vbuf.nalloc);
                 SHDEBUG(" tmp nalloc %d , vbuf nalloc %d \n", tmp_vbuf.nalloc, comm->vbuf.nalloc);
                 copy_rvecn(tmp_vbuf.v, comm->vbuf.v, 0, tmp_vbuf.nalloc);
-                /* sfree(tmp_vbuf.v);
-                tmp_vbuf.nalloc = 0; */
+                sfree(tmp_vbuf.v);
+                tmp_vbuf.nalloc = 0;
+                tmp_vbuf.v = NULL;
                 SHDEBUG(" Recovering OK \n");
 #endif
 
