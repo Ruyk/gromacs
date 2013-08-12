@@ -605,7 +605,7 @@ static void pme_calc_pidx_wrapper(int natoms, matrix recipbox, rvec x[],
     		old_max_val = shmem_get_max_alloc(atc->shmem, tmp);
     	}
 #endif
-    	atc->max_send = 10000;
+    	atc->max_send = 5000;
     	 {
     			int i, scount;
     	    	for (i = 0; i < atc->nslab; i++)
