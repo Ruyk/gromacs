@@ -5135,6 +5135,7 @@ static void dd_redistribute_cg(FILE *fplog, gmx_large_int_t step,
 
     *ncg_stay_home = home_pos_cg;
 
+
     for (d = 0; d < dd->ndim; d++)
     {
         dim      = dd->dim[d];
