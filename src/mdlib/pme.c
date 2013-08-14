@@ -1263,7 +1263,7 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
 
         atc->n = atc->count[atc->nodeid];
 #ifdef GMX_SHMEM
-#define SAFE_RCOUNT
+// #define SAFE_RCOUNT
 #ifdef SAFE_RCOUNT
 		for (i = 0; i < nnodes_comm; i++)
 		{
@@ -1288,11 +1288,13 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
 		 * The crashes seems to be related with pme_get_global_id and internal to the MPI lib.
 		 */
 		int remaining[nnodes_comm];
+		int src[nnodes_comm];
 		int rem_count = nnodes_comm;
 		int i = 0;
 		for (i = 0; i < nnodes_comm; i++)
 		{
 			remaining[i] = 1;
+			src[i] =  pme_get_global_id(atc,atc->node_src[i]);
 		}
 
 		do
@@ -1302,20 +1304,23 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
 				if (remaining[i] == 1)
 				{
 					/* Get the num of elements to receive by this PE */
-					int src  = pme_get_global_id(atc,atc->node_src[i]);
 					int rcount;
-					SHDEBUG(" Waiting for proc %d to be in call %d\n", src, *(atc->recount_call));
+					SHDEBUG(" Waiting for proc %d to be in call %d\n", src[i], *(atc->recount_call));
 					// while ( (shmem_int_g(atc->recount_call, src)) != *(atc->recount_call) ) { sched_yield(); };
-					if ( (shmem_int_g(atc->recount_call, src)) == *(atc->recount_call) )
+					if ( (shmem_int_g(atc->recount_call, src[i])) == *(atc->recount_call) )
 					{
 
 						remaining[i] = 0;
 						rem_count--;
-						rcount = shmem_int_g(&atc->count[atc->nodeid], src);
+						rcount = shmem_int_g(&atc->count[atc->nodeid], src[i]);
 						atc->rcount[i] = rcount;
 						atc->n += rcount;
 						SHDEBUG(" Updating i %d rem_count %d rcount %d \n", i, rem_count, rcount);
 					}
+					/* else
+					{
+						usleep(1);
+					} */
 				}
 			}
 		} while (rem_count > 0);
@@ -1465,11 +1470,15 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
 #ifdef GMX_SHMEM
     {
     	shmem_fence();
-    	while (shmem_int_g(&used, _my_pe()))
+    	// a.
+    	// while (shmem_int_g(&used, _my_pe()))
+    	// b.
+    	while ( (volatile) used )
     	{
     		sched_yield();
     		SHDEBUG(" Used %d \n", used);
     	}
+    	// shmem_int_wait_until(used, SHMEM_CMP_EQ, 0);
     	SHDEBUG(" Value for used is 0, disable buffers \n")
     // Invalidate the buffer data
     shmem_int_p(&ready, 0, _my_pe());

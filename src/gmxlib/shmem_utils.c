@@ -74,19 +74,19 @@ void init_shmem_buf(gmx_domdec_shmem_buf_t * shmem)
     shmem->real_buf = NULL;
     shmem->rvec_buf = NULL;
     shmem->byte_buf = NULL;
-
+// #define SHMEM_PRE_INITIALIZE
 #ifdef SHMEM_PRE_INITIALIZE
-#define SHMEM_STARTING_ELEMS 500
+#define SHMEM_STARTING_ELEMS 10000
     /* Initial size for the buffers to avoid repeated reallocation */
     shmem->int_buf  = shmalloc(SHMEM_STARTING_ELEMS * sizeof(int));
-    shmem->real_buf = shmalloc(SHMEM_STARTING_ELEMS * sizeof(real));
+   /* shmem->real_buf = shmalloc(SHMEM_STARTING_ELEMS * sizeof(real));
     shmem->rvec_buf = shmalloc(SHMEM_STARTING_ELEMS * sizeof(rvec));
-    shmem->byte_buf = shmalloc(SHMEM_STARTING_ELEMS * sizeof(void *));
+    shmem->byte_buf = shmalloc(SHMEM_STARTING_ELEMS * sizeof(void *));*/
 
     shmem->int_alloc  = SHMEM_STARTING_ELEMS;
-    shmem->real_alloc = SHMEM_STARTING_ELEMS;
+   /* shmem->real_alloc = SHMEM_STARTING_ELEMS;
     shmem->rvec_alloc = SHMEM_STARTING_ELEMS;
-    shmem->byte_alloc = SHMEM_STARTING_ELEMS;
+    shmem->byte_alloc = SHMEM_STARTING_ELEMS;*/
 #else
     shmem->int_alloc  = 0;
     shmem->real_alloc = 0;
@@ -362,8 +362,19 @@ void shmem_int_sendrecv(gmx_domdec_shmem_buf_t* shmem, int* buf_s, int n_s,
 {
 	SHDEBUG(" SendRecv (S: %d,R: %d) using SHMEM (n_s %d, n_r %d) \n", rank_s,
 			rank_r, n_s, n_r);
-	shrenew(shmem, shmem->int_buf, &(shmem->int_alloc), n_s);
+	if (shmem->int_alloc < n_s)
+	{
+		gmx_fatal(FARGS, " Integer buffer too small, aborting \n");
+	}
+	// shrenew(shmem, shmem->int_buf, &(shmem->int_alloc), n_s);
 	// shmem_barrier_all();
+
+	static int call = 0;
+	static int post = -1;
+
+	shmem_wait_for_previous_call(shmem, &call, rank_s);
+
+
 	shmem_lock(shmem, rank_s);
 	if (n_s) {
 		// Put buf_is in rank_s
@@ -371,24 +382,36 @@ void shmem_int_sendrecv(gmx_domdec_shmem_buf_t* shmem, int* buf_s, int n_s,
 		shmem_int_put(shmem->int_buf, buf_s, n_s, rank_s);
 		shmem_quiet();
 		SHDEBUG(" Data posted by %d to %d \n", _my_pe(), rank_s);
+
 	}
-	shmem_set_post(shmem, rank_s);
+	// shmem_set_post(shmem, rank_s);
+	shmem_int_p(&post, 1, rank_s);
+
 	SHDEBUG(" Event posted to %d \n", rank_s);
 	// Receive data
-	shmem_wait_post(shmem, _my_pe());
+
 	SHDEBUG(" Waiting for event from %d \n", _my_pe());
+	// shmem_wait_post(shmem, _my_pe());
+	shmem_int_wait(&post, -1);
+
 	if (n_r) {
+
 		SHDEBUG(" Updating reception buffer from %d \n", rank_r);
 		memcpy(buf_r, shmem->int_buf, n_r * sizeof(int));
 		SHDEBUG(" Copied %p into %p, size %ld, from %d \n", shmem->int_buf,
 				buf_r, n_r * sizeof(int), rank_r);
 	}
-	shmem_set_done(shmem, rank_r);
+	/* shmem_set_done(shmem, rank_r);
 	shmem_clear_post(shmem, _my_pe());
 	SHDEBUG(" Event of %d cleared \n", _my_pe());
 	shmem_wait_done(shmem, _my_pe());
-	shmem_clear_done(shmem, _my_pe());
+	shmem_clear_done(shmem, _my_pe());*/
+	post = -1;
+
 	shmem_unlock(shmem, rank_s);
+
+	shmem_int_inc(&call, _my_pe());
+
 }
 
 
@@ -465,8 +488,8 @@ shmem_clear_post(shmem, _my_pe());
 void shmem_wait_for_previous_call(gmx_domdec_shmem_buf_t * shmem, int * call, int rank)
 {
 	if (!call) return;
-	while ( (shmem_int_g(call, rank)) != (*call) ) { sched_yield(); /*usleep(SHMEM_SLEEP_TIME);*/ };
-	// while ( (shmem_int_cswap(call, *call, *call, rank)) != (*call)  ) { shmem_fence(); sched_yield(); }
+	while ( (shmem_int_g(call, rank)) != (*call) ) { sched_yield(); /* usleep(SHMEM_SLEEP_TIME);*/ };
+
 }
 
 
