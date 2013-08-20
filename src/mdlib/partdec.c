@@ -732,8 +732,9 @@ static void init_partdec(FILE *fp, t_commrec *cr, t_block *cgs, int *multinr,
     snew(pd, 1);
     cr->pd = pd;
 #ifdef GMX_SHMEM
-    snew(pd->shmem, 1);
-    init_shmem_buf(pd->shmem);
+    // snew(pd->shmem, 1);
+    // init_shmem_buf(pd->shmem);
+    pd->shmem = cr->shmem;
 #endif
 
     set_left_right(cr);

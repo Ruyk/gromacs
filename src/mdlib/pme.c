@@ -1247,9 +1247,17 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
         	}
         	if (atc->max_send > pme->buf_nalloc)
         	{
+
+
+#ifdef GMX_SHMEM_PREDEFINED_PME_SIZE
+        		 pme->bufv = atc->shmem->pme_bufv;
+        		 pme->bufr = atc->shmem->pme_bufr;
+        		 pme->buf_nalloc = atc->shmem->pme_buf_size;
+#else
         		 pme->buf_nalloc = over_alloc_dd(atc->max_send);
         		 sh_srenew(pme->bufv, pme->buf_nalloc);
         		 sh_srenew(pme->bufr, pme->buf_nalloc);
+#endif
         	}
         }
 #else
@@ -1263,7 +1271,7 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
 
         atc->n = atc->count[atc->nodeid];
 #ifdef GMX_SHMEM
-// #define SAFE_RCOUNT
+#define SAFE_RCOUNT
 #ifdef SAFE_RCOUNT
 		for (i = 0; i < nnodes_comm; i++)
 		{
@@ -1471,9 +1479,9 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
     {
     	shmem_fence();
     	// a.
-    	// while (shmem_int_g(&used, _my_pe()))
+    	while (shmem_int_g(&used, _my_pe()))
     	// b.
-    	while ( (volatile) used )
+    	// while ( (volatile) used )
     	{
     		sched_yield();
     		SHDEBUG(" Used %d \n", used);
@@ -3441,8 +3449,9 @@ static void init_atomcomm(gmx_pme_t pme, pme_atomcomm_t *atc, t_commrec *cr,
     }
 
 #ifdef GMX_SHMEM
-    snew(atc->shmem, 1);
-    init_shmem_buf(atc->shmem);
+    // snew(atc->shmem, 1);
+    // init_shmem_buf(atc->shmem);
+    atc->shmem = cr->shmem;
 #endif
 }
 

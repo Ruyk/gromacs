@@ -94,9 +94,16 @@ void init_shmem_buf(gmx_domdec_shmem_buf_t * shmem)
     shmem->byte_alloc = 0;
 
     shmem->int_buf  =NULL;
-        shmem->real_buf = NULL;
-        shmem->rvec_buf = NULL;
-        shmem->byte_buf = NULL;
+    shmem->real_buf = NULL;
+    shmem->rvec_buf = NULL;
+    shmem->byte_buf = NULL;
+#endif
+
+#ifdef GMX_SHMEM_PREDEFINED_PME_SIZE
+#define PME_STARTING_ELEMS 5000
+        shmem->pme_buf_size = PME_STARTING_ELEMS;
+        shmem->pme_bufv = shmalloc(PME_STARTING_ELEMS * sizeof(rvec));
+        shmem->pme_bufr = shmalloc(PME_STARTING_ELEMS * sizeof(real));
 #endif
     /* Init max_alloc pWrk and pSync arrays */
     sh_snew(shmem->max_alloc_pWrk1, 2>_SHMEM_REDUCE_MIN_WRKDATA_SIZE?2:_SHMEM_REDUCE_MIN_WRKDATA_SIZE);
@@ -135,6 +142,12 @@ void done_shmem_buf(gmx_domdec_shmem_buf_t * shmem)
 	sh_sfree(shmem->real_buf);
 	sh_sfree(shmem->rvec_buf);
 	sh_sfree(shmem->byte_buf);
+
+#ifdef GMX_SHMEM_PREDEFINED_PME_SIZE
+	sh_sfree(shmem->pme_bufv);
+	sh_sfree(shmem->pme_bufr);
+	shmem->pme_buf_size = 0;
+#endif
 
 	shmem->int_alloc = 0;
 	shmem->real_alloc = 0;
@@ -703,11 +716,12 @@ void shmem_put_with_off(gmx_domdec_shmem_buf_t* shmem, real* send_buf, int off_s
 		{
 			/* Sending/recv to itself */
 			memcpy((void *) (recv_buf),
-					(void *) (send_buf + off_s), send_bufsize);
+				    (void *) (send_buf + off_s), send_bufsize);
 			return;
 		} else if (send_nodeid != recv_nodeid &&
-				(recv_nodeid == _my_pe() || send_nodeid == _my_pe())
-		) {
+				     (recv_nodeid == _my_pe() || send_nodeid == _my_pe())
+		           )
+		{
 			if (send_nodeid == _my_pe() && send_bufsize > 0)
 			{
 				/* Sending/recv to itself */
@@ -724,7 +738,10 @@ void shmem_put_with_off(gmx_domdec_shmem_buf_t* shmem, real* send_buf, int off_s
 
 		shmem_wait_for_previous_call(shmem, &call, recv_nodeid);
 
-		shmem_wait_for_previous_call(shmem, &call, send_nodeid);
+		if (send_bufsize)
+		{
+		   shmem_wait_for_previous_call(shmem, &call, send_nodeid);
+		}
 
 		/* Sender: Put send_bufsize elemens of send_buf+off on recv_buf */
 		if (send_bufsize) {

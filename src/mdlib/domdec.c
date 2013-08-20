@@ -1102,7 +1102,7 @@ void dd_atom_sum_real(gmx_domdec_t *dd, real v[])
 #ifdef GMX_SHMEM
             if (cd->bInPlace)
             {
-               /* dd_sendrecv_real_off(dd, d, dddirForward,
+              /* dd_sendrecv_real_off(dd, d, dddirForward,
                              v, nat_tot, ind->nrecv[nzone+1],
                              buf, 0, ind->nsend[nzone+1]); */
                dd_put_with_off(dd, d, dddirForward,
@@ -1114,7 +1114,7 @@ void dd_atom_sum_real(gmx_domdec_t *dd, real v[])
             	/* dd_sendrecv_real_off(dd, d, dddirForward,
             			       &comm->vbuf2.v[0][0], 0, ind->nrecv[nzone+1],
             	               buf, 0, ind->nsend[nzone+1]); */
-            	 dd_put_with_off(dd, d, dddirForward,
+            	dd_put_with_off(dd, d, dddirForward,
       			       &comm->vbuf2.v[0][0], 0, ind->nrecv[nzone+1],
       	               buf);
 
@@ -7260,8 +7260,9 @@ gmx_domdec_t *init_domain_decomposition(FILE *fplog, t_commrec *cr,
 
 #ifdef GMX_SHMEM
     /* Initialise the temporary symmetric buffer structure */
-    snew(dd->shmem, 1);
-    init_shmem_buf(dd->shmem);
+    // snew(dd->shmem, 1);
+    // init_shmem_buf(dd->shmem);
+    dd->shmem = cr->shmem;
 #endif
 
     if (debug)

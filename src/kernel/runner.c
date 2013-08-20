@@ -1090,6 +1090,14 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
 #endif
     /* END OF CAUTION: cr is now reliable */
 
+#ifdef GMX_SHMEM
+    if (PAR(cr))
+    {
+    	snew(cr->shmem, 1);
+    	init_shmem_buf(cr->shmem);
+    }
+#endif
+
     /* g_membed initialisation *
      * Because we change the mtop, init_membed is called before the init_parallel *
      * (in case we ever want to make it run in parallel) */
@@ -1686,9 +1694,9 @@ int mdrunner(gmx_hw_opt_t *hw_opt,
 #endif
 
 #ifdef GMX_SHMEM
-     if (DOMAINDECOMP(cr))
+     if (PAR(cr))
      {
-    	 done_shmem_buf(cr->dd->shmem);
+    	 done_shmem_buf(cr->shmem);
      }
 #endif
 
