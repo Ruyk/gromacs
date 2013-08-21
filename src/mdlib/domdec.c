@@ -1102,7 +1102,7 @@ void dd_atom_sum_real(gmx_domdec_t *dd, real v[])
 #ifdef GMX_SHMEM
             if (cd->bInPlace)
             {
-               /* dd_sendrecv_real_off(dd, d, dddirForward,
+              /* dd_sendrecv_real_off(dd, d, dddirForward,
                              v, nat_tot, ind->nrecv[nzone+1],
                              buf, 0, ind->nsend[nzone+1]); */
                dd_put_with_off(dd, d, dddirForward,
@@ -1114,7 +1114,7 @@ void dd_atom_sum_real(gmx_domdec_t *dd, real v[])
             	/* dd_sendrecv_real_off(dd, d, dddirForward,
             			       &comm->vbuf2.v[0][0], 0, ind->nrecv[nzone+1],
             	               buf, 0, ind->nsend[nzone+1]); */
-            	 dd_put_with_off(dd, d, dddirForward,
+            	dd_put_with_off(dd, d, dddirForward,
       			       &comm->vbuf2.v[0][0], 0, ind->nrecv[nzone+1],
       	               buf);
 
@@ -4887,6 +4887,12 @@ static void dd_redistribute_cg(FILE *fplog, gmx_large_int_t step,
     gmx_domdec_comm_t *comm;
     int               *moved;
     int                nthread, thread;
+#ifdef GMX_SHMEM
+    static int acum_nvr = 0;
+    static int acum_nrcg = 0;
+    acum_nvr = 0;
+    acum_nrcg = 0;
+#endif
 
     if (dd->bScrewPBC)
     {
@@ -5017,6 +5023,9 @@ static void dd_redistribute_cg(FILE *fplog, gmx_large_int_t step,
             comm->cggl_flag[mc][ncg[mc]*DD_CGIBS+1] = nrcg | flag;
             ncg[mc] += 1;
             nat[mc] += nrcg;
+#ifdef GMX_SHMEM
+            acum_nrcg = acum_nrcg + nrcg;
+#endif
         }
     }
 
@@ -5052,7 +5061,13 @@ static void dd_redistribute_cg(FILE *fplog, gmx_large_int_t step,
             comm->cgcm_state_nalloc[mc] = over_alloc_dd(nvr);
             srenew(comm->cgcm_state[mc], comm->cgcm_state_nalloc[mc]);
         }
+#ifdef GMX_SHMEM
+        acum_nvr = acum_nvr + nvr;
+#endif
+
     }
+
+
 
     switch (fr->cutoff_scheme)
     {
@@ -5135,6 +5150,65 @@ static void dd_redistribute_cg(FILE *fplog, gmx_large_int_t step,
 
     *ncg_stay_home = home_pos_cg;
 
+#ifdef GMX_SHMEM
+    {
+#define MAX_CHECK 500
+    	static int nsame_nvr = 0;
+    	static int nsame_ncgr = 0;
+    	static int old_nvr = 0;
+    	static int old_ncgr = 0;
+		SHDEBUG(" Computing upper boundary (acum_nvr %d, acum_nrcg %d) \n", acum_nvr, acum_nrcg);
+    	if (nsame_nvr < MAX_CHECK)
+    	{
+    		/* An upper boundary for the size of nvr and nrcg in each PE
+    		 *   is the sum of the accumulated nvr and nrcg from all PEs.
+    		 * This maximum is probably higher than the real value,
+    		 *   but will suffice for our purposes.
+    		 */
+    		int max_nvr = shmem_get_sum_all(dd->shmem, acum_nvr);
+    		if (max_nvr >= old_nvr)
+    		{
+    			nsame_nvr++;
+    		}
+    		else
+    		{
+    			nsame_nvr = 0;
+    		}
+
+    		if (max_nvr > comm->vbuf.nalloc)
+    		{
+    			SHDEBUG(" Will reallocate vbuf.v %d", acum_nvr);
+    			comm->vbuf.nalloc = over_alloc_dd(max_nvr);
+    			sh_srenew(comm->vbuf.v, comm->vbuf.nalloc);
+    		}
+
+
+    	}
+    	if (nsame_ncgr < MAX_CHECK)
+    	{
+    		int max_ncgr = shmem_get_sum_all(dd->shmem, acum_nrcg);
+    		int max_cg = shmem_get_max_alloc(dd->shmem, home_pos_cg+max_ncgr);
+    		int max_at = shmem_get_max_alloc(dd->shmem, home_pos_at+max_ncgr);
+    		SHDEBUG(" Max max_ncgr %d \n", max_ncgr);
+
+    		if (max_ncgr >= old_ncgr)
+    		{
+    			nsame_ncgr++;
+    		}
+    		else
+    		{
+    			nsame_ncgr = 0;
+    		}
+
+    		SHDEBUG(" Reallocating state to %d \n", max_cg);
+    		dd_realloc_state_shmem(state, f,  max_at);
+    		SHDEBUG(" Reallocating ncg to %d \n", max_cg);
+    		dd_check_alloc_ncg(fr, state, f, max_cg);
+    		SHDEBUG(" Reallocation done \n")
+    	}
+    }
+#endif
+
 
     for (d = 0; d < dd->ndim; d++)
     {
@@ -5169,7 +5243,10 @@ static void dd_redistribute_cg(FILE *fplog, gmx_large_int_t step,
             nvs = ncg[cdd] + nat[cdd]*nvec;
             i   = rbuf[0]  + rbuf[1] *nvec;
 #ifdef GMX_SHMEM
-            vec_rvec_check_alloc_shmem(dd, &comm->vbuf, nvr+i);
+           /* {
+            	int max_nvr_i = shmem_get_max_alloc(dd->shmem, nvr+i);
+            	shrenew(dd->shmem, &comm->vbuf, &(comm->vbuf->nalloc), nvr+i);
+            }*/
 #else
             vec_rvec_check_alloc(&comm->vbuf, nvr+i);
 #endif
@@ -5189,7 +5266,7 @@ static void dd_redistribute_cg(FILE *fplog, gmx_large_int_t step,
         } /* for dir */
 
         /***** NOTE THAT: Each process will receive different charge groups, thus each buff. is different */
-#ifdef GMX_SHMEM
+#ifdef GMX_SHMEM_XXX
         SHDEBUG(" Reallocation of charge groups, ncg_recv %d \n", ncg_recv);
         {
         	int tmp = 0;
@@ -5326,6 +5403,10 @@ static void dd_redistribute_cg(FILE *fplog, gmx_large_int_t step,
                 /* Copy the state from the buffer */
 #ifdef GMX_SHMEM
                 /* Preallocated before this point */
+                if (home_pos_cg+1 > fr->cg_nalloc)
+                {
+                	gmx_fatal(FARGS, " Preallocation of cg_nalloc incorrect, size was %d \n", fr->cg_nalloc);
+                }
 #else
                 dd_check_alloc_ncg(fr, state, f, home_pos_cg+1);
 #endif
@@ -5348,6 +5429,10 @@ static void dd_redistribute_cg(FILE *fplog, gmx_large_int_t step,
 
 #ifdef GMX_SHMEM
                 /* Preallocated before this point */
+                if (home_pos_at+nrcg > state->nalloc)
+                {
+                	gmx_fatal(FARGS, " Preallocation of state failed, real size %d ", home_pos_at+nrcg);
+                }
 #else
                 if (home_pos_at+nrcg > state->nalloc)
                 {
@@ -7260,8 +7345,9 @@ gmx_domdec_t *init_domain_decomposition(FILE *fplog, t_commrec *cr,
 
 #ifdef GMX_SHMEM
     /* Initialise the temporary symmetric buffer structure */
-    snew(dd->shmem, 1);
-    init_shmem_buf(dd->shmem);
+    // snew(dd->shmem, 1);
+    // init_shmem_buf(dd->shmem);
+    dd->shmem = cr->shmem;
 #endif
 
     if (debug)
@@ -10088,7 +10174,33 @@ void dd_partition_system(FILE                *fplog,
      */
     state_local->natoms = comm->nat[ddnatNR-1];
 #ifdef GMX_SHMEM
-    dd_realloc_state_shmem(state_local, f,  shmem_get_max_alloc(dd->shmem,state_local->natoms));
+#define MAX_SAME 1000
+    {
+    	static int nsame_natoms = 0;
+    	static int old_natoms   = 0;
+    	if (nsame_natoms < MAX_SAME)
+    	{
+    		int max =  shmem_get_max_alloc(dd->shmem, state_local->natoms);
+
+    		if (max > state_local->nalloc)
+    		{
+    			dd_realloc_state_shmem(state_local, f, max);
+    			nsame_natoms = 0;
+    			old_natoms = max;
+    		}
+    		else
+    		{
+    			nsame_natoms++;
+    		}
+    	}
+    	else
+    	{
+    		if (state_local->natoms > state_local->nalloc)
+    		{
+    			gmx_fatal(FARGS, " New natoms value greater than old_natoms, increase MAX_SAME \n");
+    		}
+    	}
+    }
 #else
     if (state_local->natoms > state_local->nalloc)
     {

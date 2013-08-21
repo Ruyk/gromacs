@@ -66,7 +66,7 @@
 #include <macros.h>
 
 #ifdef GMX_SHMEM_DEBUG
-#define SHDEBUG(...) { if(debug) { fprintf(debug,"SHMEM(ID:%d) (%s,%d)", _my_pe(), __FILE__, __LINE__); fprintf(debug,__VA_ARGS__); } }
+#define SHDEBUG(...) { if(debug) { fprintf(debug,"SHMEM(ID:%d) (%s,%d)", _my_pe(), __FUNCTION__, __LINE__); fprintf(debug,__VA_ARGS__); } }
 #else
 #define SHDEBUG(...) ;
 #endif
@@ -76,6 +76,8 @@
 #include "gmx_fatal.h"
 
 typedef long shmem_flag_t;
+
+#define GMX_SHMEM_PREDEFINED_PME_SIZE
 
 typedef struct {
 	/* these buffers are used as temporary interchange space for SHMEM
@@ -97,6 +99,16 @@ typedef struct {
     /* wkr and sync arrays for max_alloc routine */
     long * max_alloc_pSync1, * max_alloc_pSync2;
     int  * max_alloc_pWrk1, * max_alloc_pWrk2;
+
+    /* wkr and sync arrays for sum_alloc routine */
+    long * sum_alloc_pSync1, * sum_alloc_pSync2;
+    int  * sum_alloc_pWrk1, * sum_alloc_pWrk2;
+
+#ifdef GMX_SHMEM_PREDEFINED_PME_SIZE
+    rvec * pme_bufv;
+    real * pme_bufr;
+    int pme_buf_size;
+#endif
 
 } gmx_domdec_shmem_buf_t;
 

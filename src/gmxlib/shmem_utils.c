@@ -65,6 +65,7 @@
 
 void init_shmem_buf(gmx_domdec_shmem_buf_t * shmem)
 {
+	int i;
 
 
 	if (!shmem)
@@ -94,15 +95,36 @@ void init_shmem_buf(gmx_domdec_shmem_buf_t * shmem)
     shmem->byte_alloc = 0;
 
     shmem->int_buf  =NULL;
-        shmem->real_buf = NULL;
-        shmem->rvec_buf = NULL;
-        shmem->byte_buf = NULL;
+    shmem->real_buf = NULL;
+    shmem->rvec_buf = NULL;
+    shmem->byte_buf = NULL;
+#endif
+
+#ifdef GMX_SHMEM_PREDEFINED_PME_SIZE
+#define PME_STARTING_ELEMS 5000
+        shmem->pme_buf_size = PME_STARTING_ELEMS;
+        shmem->pme_bufv = shmalloc(PME_STARTING_ELEMS * sizeof(rvec));
+        shmem->pme_bufr = shmalloc(PME_STARTING_ELEMS * sizeof(real));
 #endif
     /* Init max_alloc pWrk and pSync arrays */
     sh_snew(shmem->max_alloc_pWrk1, 2>_SHMEM_REDUCE_MIN_WRKDATA_SIZE?2:_SHMEM_REDUCE_MIN_WRKDATA_SIZE);
     sh_snew(shmem->max_alloc_pWrk2, 2>_SHMEM_REDUCE_MIN_WRKDATA_SIZE?2:_SHMEM_REDUCE_MIN_WRKDATA_SIZE);
     sh_snew(shmem->max_alloc_pSync1, _SHMEM_REDUCE_SYNC_SIZE);
     sh_snew(shmem->max_alloc_pSync2, _SHMEM_REDUCE_SYNC_SIZE);
+
+    /* Init sum pWrk and Psync arrays */
+    sh_snew(shmem->sum_alloc_pWrk1, 2>_SHMEM_REDUCE_MIN_WRKDATA_SIZE?2:_SHMEM_REDUCE_MIN_WRKDATA_SIZE);
+    sh_snew(shmem->sum_alloc_pWrk2, 2>_SHMEM_REDUCE_MIN_WRKDATA_SIZE?2:_SHMEM_REDUCE_MIN_WRKDATA_SIZE);
+    sh_snew(shmem->sum_alloc_pSync1, _SHMEM_REDUCE_SYNC_SIZE);
+    sh_snew(shmem->sum_alloc_pSync2, _SHMEM_REDUCE_SYNC_SIZE);
+
+    for (i = 0; i < _SHMEM_REDUCE_SYNC_SIZE; i++)
+    {
+    	shmem->max_alloc_pSync1[i] = _SHMEM_SYNC_VALUE;
+    	shmem->max_alloc_pSync2[i] = _SHMEM_SYNC_VALUE;
+    	shmem->sum_alloc_pSync1[i] = _SHMEM_SYNC_VALUE;
+    	shmem->sum_alloc_pSync1[i] = _SHMEM_SYNC_VALUE;
+    }
 
     /* Init p2p sync */
 
@@ -135,6 +157,12 @@ void done_shmem_buf(gmx_domdec_shmem_buf_t * shmem)
 	sh_sfree(shmem->real_buf);
 	sh_sfree(shmem->rvec_buf);
 	sh_sfree(shmem->byte_buf);
+
+#ifdef GMX_SHMEM_PREDEFINED_PME_SIZE
+	sh_sfree(shmem->pme_bufv);
+	sh_sfree(shmem->pme_bufr);
+	shmem->pme_buf_size = 0;
+#endif
 
 	shmem->int_alloc = 0;
 	shmem->real_alloc = 0;
@@ -323,6 +351,31 @@ int shmem_get_max_alloc(gmx_domdec_shmem_buf_t * shmem, int local_value)
 	shmem_int_max_to_all(&global_max, &local_max, 1, 0, 0, _num_pes(), pWrk, pSync);
 	call++;
 	return global_max;
+}
+
+int shmem_get_sum_all(gmx_domdec_shmem_buf_t * shmem, int local_value)
+{
+
+	static int global_sum = 0;
+	static int call = 0;
+	static int local_sum = 0;
+	int * pWrk;
+	long * pSync;
+
+	if (call%2)
+	{
+		pWrk = shmem->sum_alloc_pWrk1;
+		pSync = shmem->sum_alloc_pSync1;
+	}
+	else
+	{
+		pWrk = shmem->sum_alloc_pWrk2;
+		pSync = shmem->sum_alloc_pSync2;
+	}
+	local_sum = local_value;
+	shmem_int_sum_to_all(&global_sum, &local_sum, 1, 0, 0, _num_pes(), pWrk, pSync);
+	call++;
+	return global_sum;
 }
 
 int over_alloc_shmem(int n)
@@ -557,7 +610,7 @@ void shmem_sendrecv_nobuf_put( gmx_domdec_shmem_buf_t * shmem,
 		shmem_wait_for_previous_call(shmem, &call, rank_s);
 		shmem_int_wait(&size, -1);
 
-		if (min(size, size_s))
+		if (size_s)
 		{
 			// shmem_putmem( buf_r, buf_s, min(size, size_s), rank_s);
 			shmem_putmem( buf_r, buf_s, size_s, rank_s );
@@ -577,23 +630,6 @@ void shmem_sendrecv_nobuf_put( gmx_domdec_shmem_buf_t * shmem,
 		shmem_int_wait(&done, -1);
 	}
 
-	/* shmem_int_p(&size, -1, rank_r);
-	shmem_fence();
-	shmem_quiet();
-
-	shmem_int_wait_until(&size, SHMEM_CMP_EQ, -1);*/
-
-	/* shmem_int_p(&done, -1, rank_s);
-	shmem_fence();
-	shmem_quiet();
-	shmem_int_wait_until(&done, SHMEM_CMP_EQ, -1); */
-
-	/* shmem_int_p(&size, -1, rank_r);
-	shmem_int_p(&done, -1, rank_s);
-
-	shmem_fence();
-	shmem_quiet();
-	} */
 	size = -1;
 	done = -1;
 
@@ -703,11 +739,12 @@ void shmem_put_with_off(gmx_domdec_shmem_buf_t* shmem, real* send_buf, int off_s
 		{
 			/* Sending/recv to itself */
 			memcpy((void *) (recv_buf),
-					(void *) (send_buf + off_s), send_bufsize);
+				    (void *) (send_buf + off_s), send_bufsize);
 			return;
 		} else if (send_nodeid != recv_nodeid &&
-				(recv_nodeid == _my_pe() || send_nodeid == _my_pe())
-		) {
+				     (recv_nodeid == _my_pe() || send_nodeid == _my_pe())
+		           )
+		{
 			if (send_nodeid == _my_pe() && send_bufsize > 0)
 			{
 				/* Sending/recv to itself */
@@ -724,7 +761,10 @@ void shmem_put_with_off(gmx_domdec_shmem_buf_t* shmem, real* send_buf, int off_s
 
 		shmem_wait_for_previous_call(shmem, &call, recv_nodeid);
 
-		shmem_wait_for_previous_call(shmem, &call, send_nodeid);
+		if (send_bufsize)
+		{
+		   shmem_wait_for_previous_call(shmem, &call, send_nodeid);
+		}
 
 		/* Sender: Put send_bufsize elemens of send_buf+off on recv_buf */
 		if (send_bufsize) {

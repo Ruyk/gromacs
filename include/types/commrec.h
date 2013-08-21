@@ -307,6 +307,10 @@ typedef struct {
     /* The duties of this node, see the defines above */
     int             duty;
 
+#ifdef GMX_SHMEM
+    gmx_domdec_shmem_buf_t * shmem;
+#endif
+
     gmx_multisim_t *ms;
 
     /* these buffers are used as destination buffers if MPI_IN_PLACE isn't

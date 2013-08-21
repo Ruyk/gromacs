@@ -128,7 +128,7 @@ void dd_put_with_off(const gmx_domdec_t *dd,
     rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
     SHDEBUG(" Before put with off \n");
     // shmem_float_sendrecv_off(shmem, buf_s, off_s, n_s, rank_s, buf_r, off_r, n_r, rank_r);
-    shmem_put_with_off(shmem, buf_s, off_s, n_s, rank_s, buf_r, rank_r);
+    // shmem_put_with_off(shmem, buf_s, off_s, n_s, rank_s, buf_r, rank_r);
     SHDEBUG(" After put with off \n");
 }
 
@@ -263,101 +263,134 @@ void dd_sendrecv2_rvec_off(const gmx_domdec_t *dd,
 	 rank_r_bw = rank_s_fw; // dd->neighbor[ddimind][0];
 
 	 shmem_int_inc(&call, _my_pe());
+     // shmem_barrier_all();
 
-	 shmem_wait_for_previous_call(shmem, &call, rank_r_fw);
+#ifdef SENDRECV2_SIZE_NOT_EQUAL
 	 shmem_wait_for_previous_call(shmem, &call, rank_s_fw);
+	 shmem_wait_for_previous_call(shmem, &call, rank_r_fw);
+#else
+	 if (n_s_fw || n_r_bw)
+	 {
+	 	shmem_wait_for_previous_call(shmem, &call, rank_s_fw);
+	 }
+	 if (n_s_bw || n_r_fw)
+	 {
+		 shmem_wait_for_previous_call(shmem, &call, rank_r_fw);
+	 }
+#endif
 
 	{
 			static int rem_off_fw = -1;
-			static int rem_size_fw = INT_MAX;
 			static int rem_off_bw = -1;
+			static int rem_size_fw = INT_MAX;
 			static int rem_size_bw = INT_MAX;
-			static int done = -2;
-
-
-			shmem_int_p(&done, -1, rank_s_fw);
-			shmem_fence();
-			shmem_quiet();
-			shmem_int_wait_until(&done, SHMEM_CMP_EQ, -1);
+			static int done_bw = -1;
+			static int done_fw = -1;
 
 			/* Receiver: Put offset on sender */
-			shmem_int_p(&rem_off_fw, off_r_fw, rank_r_fw);
+#ifdef SENDRECV2_SIZE_NOT_EQUAL
+			shmem_int_p(&rem_size_fw, n_r_fw, rank_r_fw);
 			shmem_fence();
 			shmem_quiet();
-			shmem_int_wait(&rem_off_fw, -1);
-			/* Receiver: Put size on sender */
-			/*shmem_int_p(&rem_size_fw, n_r_fw, rank_r_fw);
-			shmem_fence();
-			shmem_quiet();*/
-			/* Sender: Wait for receiver to put data on me */
-			// shmem_int_wait(&rem_size_fw, -1);
 
-			shmem_int_p(&rem_off_bw, off_r_bw, rank_r_bw);
+			shmem_int_wait(&rem_size_fw, INT_MAX);
+
+
+			shmem_int_p(&rem_size_bw, n_r_bw, rank_r_bw);
 			shmem_fence();
 			shmem_quiet();
-			shmem_int_wait(&rem_off_bw, -1);
-			/* shmem_int_p(&rem_size_bw, n_r_bw, rank_r_bw);
-			shmem_fence();
-			shmem_quiet();
-			shmem_int_wait(&rem_size_bw, -1);*/
+
+			shmem_int_wait(&rem_size_bw, INT_MAX);
+
+
+			if (n_s_fw != rem_size_fw)
+			{
+				gmx_fatal(FARGS, " Not the same fw!!! ");
+			}
+			if (n_s_bw != rem_size_bw)
+			{
+				gmx_fatal(FARGS, " Not the same bw !!!");
+			}
+#endif
+
+			n_s_fw = min(rem_size_fw, n_s_fw);
+			n_s_bw = min(rem_size_bw, n_s_bw);
+
+			if (n_r_fw)
+			{
+				shmem_int_p(&rem_off_fw, off_r_fw, rank_r_fw);
+			}
+
+			if (n_r_bw)
+			{
+				shmem_int_p(&rem_off_bw, off_r_bw, rank_r_bw);
+			}
+
+			if (n_s_fw)
+			{
+				shmem_int_wait(&rem_off_fw, -1);
+			}
+
+			if (n_s_bw)
+			{
+				shmem_int_wait(&rem_off_bw, -1);
+			}
+
+
 
 			/* Sender: Put min(rsize, send_bufsize) elements of send_buf on recv_buf + offset */
-			if (min(rem_size_fw, n_s_fw)) {
+			if (n_s_fw) {
 				SHDEBUG(
-						" Putting data on recv_nodeid, rem off %d send off %d, recv ptr %p send ptr %p \n",
-						rem_off_fw, off_s_fw, buf_r_fw, buf_s_fw);
-				shmem_float_put_nb(((real *) buf_r_fw + (rem_off_fw*DIM)),
-						((real *) buf_s_fw + (off_s_fw*DIM)), min(rem_size_fw, n_s_fw)*DIM,
-						rank_s_fw, NULL);
+						"2WAY Putting data on %d, rem off %d send off %d, recv ptr %p send ptr %p \n",
+						rank_s_fw,rem_off_fw, off_s_fw, buf_r_fw, buf_s_fw);
+				shmem_float_put(((real *) buf_r_fw + (rem_off_fw*DIM)),
+						((real *) buf_s_fw + (off_s_fw*DIM)), n_s_fw*DIM,
+						rank_s_fw);
 			}
 
 			/* Sender: Put min(rsize, send_bufsize) elements of send_buf on recv_buf + offset */
-			if (min(rem_size_bw, n_s_bw)) {
+			if (n_s_bw) {
 				SHDEBUG(
-						" Putting data on recv_nodeid, rem off %d send off %d, recv ptr %p send ptr %p \n",
-						rem_off_bw, off_s_bw, buf_r_bw, buf_s_bw);
-				shmem_float_put_nb(((real *) buf_r_bw + (rem_off_bw*DIM)),
-						((real *) buf_s_bw + off_s_bw), min(rem_size_bw, n_s_bw)*DIM,
-						rank_s_bw, NULL);
+						"2WAY Putting data on %d, rem off %d send off %d, recv ptr %p send ptr %p \n",
+						rank_s_bw, rem_off_bw, off_s_bw, buf_r_bw, buf_s_bw);
+				shmem_float_put(((real *) buf_r_bw + (rem_off_bw*DIM)),
+						((real *) buf_s_bw + off_s_bw), n_s_bw*DIM,
+						rank_s_bw);
 			}
 			shmem_quiet();
 
-			SHDEBUG(" Putting ACK in %d \n", rank_s_fw);
-			/* Tell receiver data is ready */
-			shmem_int_p(&done, 1, rank_s_fw);
-			shmem_fence();
+			if (n_s_fw)
+			{
+				shmem_int_p(&done_fw, 1, rank_s_fw);
+			}
+
+			if (n_s_bw)
+			{
+				/* Tell receiver data is ready */
+				shmem_int_p(&done_bw, 1, rank_s_bw);
+			}
 			shmem_quiet();
-			SHDEBUG(" Waiting for done from send_nodeid %d \n", rank_r_fw);
+			SHDEBUG("2WAY Waiting for done from send_nodeid fw %d bw %d, recv fw %d  bw %d \n",
+					  rank_r_fw, rank_r_bw, n_r_fw, n_r_bw);
+
 			/* Wait for data to be written */
-			shmem_int_wait(&done, -1);
-			SHDEBUG(" After done \n");
+			if (n_r_bw)
+			{
+				shmem_int_wait(&done_bw, -1);
+			}
+			rem_off_bw = -1;
+			done_bw = -1;
+			rem_size_bw = INT_MAX;
 
-			/* Receiver: Put offset on sender */
-			shmem_int_p(&rem_off_fw, -1, rank_r_fw);
-			shmem_fence();
-			shmem_quiet();
-			shmem_int_wait_until(&rem_off_fw, SHMEM_CMP_EQ, -1);
-			shmem_int_p(&rem_off_bw, -1, rank_r_bw);
-			shmem_fence();
-			shmem_quiet();
-			shmem_int_wait_until(&rem_off_bw, SHMEM_CMP_EQ, -1);
+			if (n_r_fw)
+			{
+				shmem_int_wait(&done_fw, -1);
+			}
+			rem_off_fw = -1;
+			done_fw = -1;
+			rem_size_fw  = INT_MAX;
 
-			/* Receiver: Put size on sender */
-			/*shmem_int_p(&rem_size_fw, -1, rank_r_fw);
-			shmem_fence();
-			shmem_quiet();*/
-			// shmem_int_wait_until(&rem_size_fw, SHMEM_CMP_EQ, -1);
-			/* shmem_int_p(&rem_size_bw, -1, rank_r_bw);
-			shmem_fence();
-			shmem_quiet();
-			shmem_int_wait_until(&rem_size_bw, SHMEM_CMP_EQ, -1); */
-
-			/*shmem_int_p(&done, -1, rank_s_fw);
-			shmem_fence();
-			shmem_quiet();
-			shmem_int_wait_until(&done, SHMEM_CMP_EQ, -1);*/
-
-
+			SHDEBUG("2WAY After done \n");
 
 		}
 #endif

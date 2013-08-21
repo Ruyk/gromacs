@@ -523,6 +523,11 @@ static int setup_specat_communication(gmx_domdec_t             *dd,
     int               nat_tot_specat, nat_tot_prev, nalloc_old;
     gmx_bool          bPBC, bFirst;
     gmx_specatsend_t *spas;
+#ifdef GMX_SHMEM
+    int max_fac_nr, max_fac_ns;
+    max_fac_nr = 0;
+    max_fac_ns = 0;
+#endif
 
     if (debug)
     {
@@ -712,7 +717,11 @@ static int setup_specat_communication(gmx_domdec_t             *dd,
             nr += spac->spas[d][1].nrecv;
         }
 #ifdef GMX_SHMEM
-        shrenew(dd->shmem, spac->vbuf, &spac->vbuf_nalloc, vbuf_fac*ns);
+        // shrenew(dd->shmem, spac->vbuf, &spac->vbuf_nalloc, vbuf_fac*ns);
+        if (max_fac_ns < vbuf_fac*ns)
+        {
+        	max_fac_ns = vbuf_fac*ns;
+        }
 #else
         if (vbuf_fac*ns > spac->vbuf_nalloc)
         {
@@ -724,7 +733,15 @@ static int setup_specat_communication(gmx_domdec_t             *dd,
 #ifdef GMX_SHMEM
         if (vbuf_fac == 2)
         {
-        	shrenew(dd->shmem, spac->vbuf2, &spac->vbuf2_nalloc, vbuf_fac*nr);
+      //  	shrenew(dd->shmem, spac->vbuf2, &spac->vbuf2_nalloc, vbuf_fac*nr);
+       /* 	if (tmp_vbuf2_nalloc < vbuf_fac*nr)
+        	{
+        		tmp_vbuf2_nalloc = over_alloc_dd(vbuf_fac*nr);
+        	}*/
+            if (max_fac_nr < vbuf_fac*nr)
+            {
+            	max_fac_nr = vbuf_fac*nr;
+            }
         }
 #else
         if (vbuf_fac == 2 && vbuf_fac*nr > spac->vbuf2_nalloc)
@@ -739,6 +756,59 @@ static int setup_specat_communication(gmx_domdec_t             *dd,
             gmx_hash_change_or_set(ga2la_specat, dd->gatindex[i], i);
         }
     }
+#ifdef GMX_SHMEM
+#define MAX_SAME 2000
+    {
+    	static int nsame_r = 0;
+    	static int nsame_s = 0;
+
+    	if (nsame_r < MAX_SAME)
+    	{
+
+    		int max_r = shmem_get_max_alloc(dd->shmem, max_fac_nr);
+
+    		if (max_r > spac->vbuf2_nalloc)
+    		{
+    			spac->vbuf2_nalloc = max_r;
+    			sh_snew(spac->vbuf2, max_r);
+    			nsame_r = 0;
+    		}
+    		else
+    		{
+    			nsame_r++;
+    		}
+    	}
+    	else
+    	{
+    		if (max_fac_nr > spac->vbuf2_nalloc)
+    		{
+    			gmx_fatal(FARGS, " Max Fac Nr greater than vbuf2_nalloc, increase MAX_SAME \n");
+    		}
+    	}
+
+    	if (nsame_s < MAX_SAME)
+    	{
+    		int max_s = shmem_get_max_alloc(dd->shmem, max_fac_ns);
+    		if (max_s > spac->vbuf_nalloc)
+    		{
+    			spac->vbuf_nalloc = max_s;
+    			sh_srenew(spac->vbuf, max_s);
+    			nsame_s = 0;
+    		}
+    		else
+    		{
+    			nsame_s++;
+    		}
+    	}
+    	else
+    	{
+    		if (max_fac_ns > spac->vbuf_nalloc)
+    		{
+    			gmx_fatal(FARGS, " Max Fac Ns greater than vbufs_nalloc, increase MAX_SAME \n");
+    		}
+    	}
+    }
+#endif
 
     /* Check that in the end we got the number of atoms we asked for */
     if (nrecv_local != ireq->n)
