@@ -100,6 +100,10 @@ typedef struct {
     long * max_alloc_pSync1, * max_alloc_pSync2;
     int  * max_alloc_pWrk1, * max_alloc_pWrk2;
 
+    /* wkr and sync arrays for sum_alloc routine */
+    long * sum_alloc_pSync1, * sum_alloc_pSync2;
+    int  * sum_alloc_pWrk1, * sum_alloc_pWrk2;
+
 #ifdef GMX_SHMEM_PREDEFINED_PME_SIZE
     rvec * pme_bufv;
     real * pme_bufr;
