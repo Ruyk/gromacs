@@ -10174,10 +10174,9 @@ void dd_partition_system(FILE                *fplog,
      */
     state_local->natoms = comm->nat[ddnatNR-1];
 #ifdef GMX_SHMEM
-#define MAX_SAME 1000
+#define MAX_SAME 3000
     {
     	static int nsame_natoms = 0;
-    	static int old_natoms   = 0;
     	if (nsame_natoms < MAX_SAME)
     	{
     		int max =  shmem_get_max_alloc(dd->shmem, state_local->natoms);
@@ -10186,7 +10185,6 @@ void dd_partition_system(FILE                *fplog,
     		{
     			dd_realloc_state_shmem(state_local, f, max);
     			nsame_natoms = 0;
-    			old_natoms = max;
     		}
     		else
     		{
