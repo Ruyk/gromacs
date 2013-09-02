@@ -757,7 +757,7 @@ static int setup_specat_communication(gmx_domdec_t             *dd,
         }
     }
 #ifdef GMX_SHMEM
-#define MAX_SAME 2000
+#define MAX_SAME 10000
     {
     	static int nsame_r = 0;
     	static int nsame_s = 0;
