@@ -649,7 +649,7 @@ void shmem_float_sendrecv_off(gmx_domdec_shmem_buf_t* shmem, real* send_buf, int
 
 
 
-		if (recv_bufsize)
+		// if (recv_bufsize)
 		{
 			shmem_wait_for_previous_call(shmem, &call, recv_nodeid);
 
@@ -662,7 +662,7 @@ void shmem_float_sendrecv_off(gmx_domdec_shmem_buf_t* shmem, real* send_buf, int
 			shmem_quiet();
 		}
 
-		if (send_bufsize)
+		// if (send_bufsize)
 		{
 			shmem_wait_for_previous_call(shmem, &call, send_nodeid);
 			SHDEBUG(" Put data on Sender %d\n", recv_nodeid);
@@ -688,7 +688,7 @@ void shmem_float_sendrecv_off(gmx_domdec_shmem_buf_t* shmem, real* send_buf, int
 			shmem_quiet();
 		}
 
-		if (recv_bufsize)
+		// if (recv_bufsize)
 		{
 			SHDEBUG(" Waiting for done from send_nodeid %d \n", recv_nodeid);
 			/* Wait for data to be written */
@@ -704,7 +704,7 @@ void shmem_float_sendrecv_off(gmx_domdec_shmem_buf_t* shmem, real* send_buf, int
 			shmem_quiet();
 		}
 
-		if (send_bufsize)
+		// if (send_bufsize)
 		{
 			/* Sender: Wait for ACK from receiver */
 			SHDEBUG(" Waiting for data to be reset  \n");
