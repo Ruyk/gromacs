@@ -1200,6 +1200,7 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
     static int call = 0;
     static int used = 0;
     static int ready = 0;
+    int src_v[1000];
 #ifdef SHMEM_PME_USE_PUT
     static int local_pos = 0;
 #else
@@ -1286,7 +1287,9 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
 			rcount = shmem_int_g(&atc->count[atc->nodeid], src);
 			atc->rcount[i] = rcount;
 			atc->n += rcount;
+			src_v[i] = src;
 		}
+
 #else
 		/* This implementation reduces imbalance by avoiding waiting sequentially
 		 * for each other process to finish - instead it peeks the status of each one and
@@ -1389,7 +1392,7 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
 
         for (i = 0; i < nnodes_comm; i++)
         {
-        	int src  = pme_get_global_id(atc,atc->node_src[i]);
+        	int src  = src_v[i];
         	while ( (shmem_int_g(atc->recount_call, src)) != *(atc->recount_call) ) { sched_yield(); };
         	used += atc->count[commnode[i]];
         }
@@ -1398,30 +1401,16 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
     	shmem_int_p(&ready, 1, _my_pe());
     	shmem_quiet();
 
-    	// MPI_Barrier(atc->mpi_comm);
     	for (i = 0; i < nnodes_comm; i++)
     	{
-    		int dest = pme_get_global_id(atc,atc->node_dest[i]);
-    		int src  = pme_get_global_id(atc,atc->node_src[i]);
+    		// int dest = pme_get_global_id(atc,atc->node_dest[i]);
+    		int src  = src_v[i]; // pme_get_global_id(atc,atc->node_src[i]);
     		int rem_pos = 0;
+    		// MPI_Barrier(atc->mpi_comm);
     		scount = atc->count[commnode[i]];
     		rcount = atc->rcount[i];
-#ifdef SHMEM_PME_USE_PUT
-    		MPI_Barrier(atc->mpi_comm);
-    		if (scount > 0)
-    		{
-    			rem_pos = shmem_int_g(&local_pos, dest);
-    			if (bX)
-    			{
-    				shmem_putmem(&atc->x[rem_pos][0], &pme->bufv[buf_pos][0], scount * sizeof(rvec), dest);
-    			}
-    			shmem_float_put(&atc->q[rem_pos], &pme->bufr[buf_pos], scount, dest);
-    			buf_pos   += scount;
-    			shmem_int_add(&local_pos, scount, dest);
-    		}
-    		MPI_Barrier(atc->mpi_comm);
-#else
-    		if (rcount > 0)
+
+    		if (rcount > 0 /* || scount > 0*/ )
     		{
     			{
     				shmem_fence();
@@ -1431,21 +1420,24 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
     				}
     			}
 
-    			int rem_buf_pos = shmem_int_g(&atc->acum_count[i], src);
+	      		int rem_buf_pos = shmem_int_g(&atc->acum_count[i], src);
 
     			if (bX)
     			{
-    				shmem_getmem(&atc->x[local_pos][0], &pme->bufv[rem_buf_pos][0], rcount * sizeof(rvec), src);
-    			}
-    			shmem_float_get(&atc->q[local_pos], &pme->bufr[rem_buf_pos], rcount, src);
-    			local_pos += atc->rcount[i];
+    				// shmem_getmem(&atc->x[local_pos][0], &pme->bufv[rem_buf_pos][0], rcount * sizeof(rvec), src);
+    				shmem_float_get(&atc->x[local_pos][0], &pme->bufv[rem_buf_pos][0], rcount * DIM, src);
+                			}
+		if (rcount > 0) {
+    			shmem_float_get(atc->q + local_pos, pme->bufr + rem_buf_pos, rcount, src);
+		}
+    			local_pos += rcount;
 
     			{
     				SHDEBUG(" Substracting rcount %d \n", rcount);
     				shmem_int_add(&used, (-1) * rcount, src);
     			}
     		}
-#endif
+		// shmem_barrier_all();
     	}
     }
 
@@ -1457,6 +1449,11 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
         rcount = atc->rcount[i];
         if (scount > 0 || rcount > 0)
         {
+//		int rem_buf_pos = shmem_int_g(&atc->acum_count[i], src);
+	    if (atc->acum_count)
+	    {
+	    	buf_pos = atc->acum_count[i];
+	    }
             if (bX)
             {
                 /* Communicate the coordinates */
@@ -1468,7 +1465,8 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
             pme_dd_sendrecv(atc, FALSE, i,
                             pme->bufr + buf_pos, scount*sizeof(real),
                             atc->q + local_pos, rcount*sizeof(real));
-            buf_pos   += scount;
+            // buf_pos   += scount;
+	   
             local_pos += atc->rcount[i];
             }
 
@@ -1478,6 +1476,7 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
 #ifdef GMX_SHMEM
     {
     	shmem_fence();
+	shmem_quiet();
     	// a.
     	while (shmem_int_g(&used, _my_pe()))
     	// b.
@@ -1492,8 +1491,8 @@ static void dd_pmeredist_x_q(gmx_pme_t pme,
     shmem_int_p(&ready, 0, _my_pe());
     shmem_quiet();
     }
-#endif
 
+#endif
 }
 #endif
 
@@ -3408,10 +3407,12 @@ static void init_atomcomm(gmx_pme_t pme, pme_atomcomm_t *atc, t_commrec *cr,
 #ifdef GMX_SHMEM
         for (thread = 0; thread < pme->nthread; thread++)
         {
-            sh_snew(atc->count_thread[thread], atc->nslab);
+            // sh_snew(atc->count_thread[thread], atc->nslab);
+            sh_snew(atc->count_thread[thread], _num_pes());
         }
         /* TODO: Multithread code */
-        sh_snew(atc->acum_count, atc->nslab);
+        // sh_snew(atc->acum_count, atc->nslab);
+        sh_snew(atc->acum_count, _num_pes());
         sh_snew(atc->recount_call, 1);
         *(atc->recount_call)=0;
 #else
