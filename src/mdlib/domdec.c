@@ -5152,7 +5152,7 @@ static void dd_redistribute_cg(FILE *fplog, gmx_large_int_t step,
 
 #ifdef GMX_SHMEM
     {
-#define MAX_CHECK 500
+#define MAX_CHECK 10000
     	static int nsame_nvr = 0;
     	static int nsame_ncgr = 0;
     	static int old_nvr = 0;
@@ -10174,7 +10174,7 @@ void dd_partition_system(FILE                *fplog,
      */
     state_local->natoms = comm->nat[ddnatNR-1];
 #ifdef GMX_SHMEM
-#define MAX_SAME 1000
+#define MAX_SAME 10000
     {
     	static int nsame_natoms = 0;
     	static int old_natoms   = 0;
