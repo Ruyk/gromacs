@@ -128,7 +128,7 @@ void dd_put_with_off(const gmx_domdec_t *dd,
     rank_r = dd->neighbor[ddimind][direction == dddirForward ? 1 : 0];
     SHDEBUG(" Before put with off \n");
     // shmem_float_sendrecv_off(shmem, buf_s, off_s, n_s, rank_s, buf_r, off_r, n_r, rank_r);
-    // shmem_put_with_off(shmem, buf_s, off_s, n_s, rank_s, buf_r, rank_r);
+    shmem_put_with_off(shmem, buf_s, off_s, n_s, rank_s, buf_r, rank_r);
     SHDEBUG(" After put with off \n");
 }
 
